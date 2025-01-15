@@ -6,6 +6,7 @@ In the semi-honest scenario, x,y,M are all protected.
 
 1. Alice and Bob runs MPC inference using Crypten.
 2. Bob receives y', then computes loss and sends to Alice.
+CHECK: If bob can compute the loss altogehter withcrypten?
 
 ## Malicious scenario
 
