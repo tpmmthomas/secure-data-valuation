@@ -7,9 +7,9 @@ This repository contains code implementation of our paper.
 ```bash
 conda create -n secdataval python=3.11 -y
 conda activate secdataval
-pip install torch torchvision torchaudio
+pip install torch torchvision torchaudio matplotlib
 ```
 
 TODOS
-- [ ] Find out models and datasets to test
+- [ ] Find out models and datasets to test from papers
 - [ ] 
