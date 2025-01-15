@@ -92,7 +92,7 @@ def construct_private_model(input_size):
     # party 0 always gets the actual model; remaining parties get dummy model
     if rank == 0:
         model_upd = LeNet()
-        model_upd.load_state_dict(torch.load('./data/model.pth'))
+        model_upd.load_state_dict(torch.load('./data/model.pth', weights_only=True))
     else:
         model_upd = LeNet()
     private_model = crypten.nn.from_pytorch(model_upd, dummy_input).encrypt(src=0)
@@ -113,8 +113,8 @@ def construct_private_data():
         src_id = 0
 
     if rank == src_id:
-        input_upd = torch.load('data/data.pth')
-        label_upd = torch.load('data/lbl.pth')
+        input_upd = torch.load('data/data.pth', weights_only=True)
+        label_upd = torch.load('data/lbl.pth', weights_only=True)
     else:
         input_upd = torch.empty(INPUT_SIZE)
         label_upd = torch.empty((10,))
