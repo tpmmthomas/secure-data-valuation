@@ -5,7 +5,7 @@ This repository contains code implementation of our paper.
 
 ## Environment set up
 ```bash
-conda create -n secdataval python=3.7 -y #Crypten Requires 3.7 
+conda create -n secdataval python=3.11 -y 
 conda activate secdataval
 SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True pip install -r requirements.txt
 ```
