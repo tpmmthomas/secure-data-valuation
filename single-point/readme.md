@@ -9,6 +9,14 @@ In the semi-honest scenario, x,y,M are all protected.
 
 Please go to the `semi-honest` folder and run `python launcher.py` for the complete example, and see explanation on `example.ipynb`.
 
+### Assumed Public data
+- Model architecture
+
+### Protected data
+- Model weights
+- Input data
+- Labels
+
 ## Malicious scenario
 
 In the malicious scenario, only y, M are protected.
