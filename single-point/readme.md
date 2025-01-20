@@ -7,7 +7,10 @@ In the semi-honest scenario, x,y,M are all protected.
 1. Alice and Bob runs MPC inference using Crypten.
 2. Bob receives y', then computes loss and sends to Alice.
 
-Please go to the `semi-honest` folder and run `python launcher.py` for the complete example, and see explanation on `example.ipynb`.
+To understand how these works:  
+1. First go to `semi-honest/example.ipynb` to understand the protocol, and create the model architecture for Alice, the data point with label for Bob and save them to appropriate `.pth` files.
+2. Then run `python semi-honest/launcher.py` to run the protocol with multi-processing to simulate the real-world execution.
+
 
 ### Assumed Public data
 - Model architecture

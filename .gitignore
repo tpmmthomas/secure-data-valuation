@@ -34,3 +34,9 @@
 **/data
 CrypTen
 **/__pycache__
+ezkl
+*.onnx
+*.compiled
+*.pf
+*.vk
+*.pk
