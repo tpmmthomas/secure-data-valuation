@@ -1,0 +1,14 @@
+[package]
+name = "my_poseidon"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+halo2_proofs = { git = "https://github.com/zkonduit/halo2", package = "halo2_proofs", features = [
+    "circuit-params",
+] }
+halo2_gadgets = { git = "https://github.com/zkonduit/halo2" }
+maybe-rayon = { version = "0.1.1", default-features = false }
+thiserror = { version = "1.0.38", default-features = false }
+
+# For BN254 field

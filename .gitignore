@@ -41,3 +41,4 @@ ezkl
 *.vk
 *.pk
 **/pasta-hadeshash
+**/target
