@@ -168,14 +168,28 @@ fn run(message: Vec<Fp>) -> Result<Vec<Vec<Fp>>, ModuleError> {
     Ok(vec![hash_inputs])
 }
 
+fn decimal_to_fixed_point(decimal: f64, scale: u32) -> Fp{
+    let scaling_factor = 2_u64.pow(scale);
+    let scaled_integer = (decimal * scaling_factor as f64).round() as u64;
+    Fp::from(scaled_integer)
+}
+
 fn main() {
     // 3. Let's do a basic test hashing a vector of 3 elements:
-    let inputs = [Fp::from(0)];
+    let output = 0.030344977974891663;
 
-    // The library's "Hash" function can be used for a fixed-size input:
-    // For dynamic length, you'd do a "ConstantLength<N>" that matches the number of inputs.
-    // Because we use RATE=4, we can pass up to 4 elements at once in a single permutation.
-    // If your vector is bigger than RATE, you'd need a sponge or "tree" approach.
+    // To get the input scale, search for input_scale in settings.json
+    // To get the output scale, search for model_output_scales in settings.json
+    let fixed_point_value = decimal_to_fixed_point(output,26);
+    println!("Fixed point value: {:?}", fixed_point_value);
+
+
+    let inputs = [fixed_point_value]; //2036417
+
+    // // The library's "Hash" function can be used for a fixed-size input:
+    // // For dynamic length, you'd do a "ConstantLength<N>" that matches the number of inputs.
+    // // Because we use RATE=4, we can pass up to 4 elements at once in a single permutation.
+    // // If your vector is bigger than RATE, you'd need a sponge or "tree" approach.
     let digest = run(inputs.to_vec()).unwrap();
 
     println!("Poseidon digest = {:?}", digest);
