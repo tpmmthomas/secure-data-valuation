@@ -12,4 +12,4 @@ SKLEARN_ALLOW_DEPRECATED_SKLEARN_PACKAGE_INSTALL=True pip install -r requirement
 
 TODOS
 - [ ] Find out models and datasets to test from papers
-- [ ] 
+- [ ] Do the blockchain setting to chain it all up
