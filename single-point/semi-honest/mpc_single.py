@@ -26,31 +26,7 @@ from examples.meters import AverageMeter
 from examples.util import NoopContextManager
 from torchvision import datasets, transforms
 
-class LeNet(nn.Sequential):
-    """
-    Adaptation of LeNet that uses ReLU activations
-    """
-
-    # network architecture:
-    def __init__(self):
-        super(LeNet, self).__init__()
-        self.conv1 = nn.Conv2d(3, 6, 5)
-        self.pool = nn.MaxPool2d(2, 2)
-        self.conv2 = nn.Conv2d(6, 16, 5)
-        self.fc1 = nn.Linear(16 * 5 * 5, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, 10)
-
-    def forward(self, x):
-        x = self.pool(F.relu(self.conv1(x)))
-        x = self.pool(F.relu(self.conv2(x)))
-        x = x.view(-1, 16 * 5 * 5)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
-        return x
-    
-INPUT_SIZE = (1, 3, 32, 32) # dimension of single-data point
+from model import Model, INPUT_SIZE
 
 
 
@@ -77,7 +53,7 @@ def run_data_valuation(
     
     private_model.eval()
     output = private_model(private_input)
-    loss_value = lossFunc(output, private_label)
+    loss_value = -lossFunc(output, private_label)
     
     logging.info("Loss value: %s" % loss_value.get_plain_text())
     
@@ -91,10 +67,10 @@ def construct_private_model(input_size):
 
     # party 0 always gets the actual model; remaining parties get dummy model
     if rank == 0:
-        model_upd = LeNet()
+        model_upd = Model()
         model_upd.load_state_dict(torch.load('./data/model.pth', weights_only=True))
     else:
-        model_upd = LeNet()
+        model_upd = Model()
     private_model = crypten.nn.from_pytorch(model_upd, dummy_input).encrypt(src=0)
     return private_model
 
