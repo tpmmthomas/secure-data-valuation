@@ -71,36 +71,36 @@ def _(i,j):
     predictions[i][j] = sfix.get_input_from(1)
 
 # Compute entropy for uncertainty score
-log2e = sfix(1.44269504)
-entropy_tmp = Matrix(n,cls, sfix)
-@for_range_opt([n,cls])
-def _(i,j):
-    entropy_tmp[i][j] = -predictions[i][j] * mpc_math.log2_fx(predictions[i][j]) / log2e
+# log2e = sfix(1.44269504)
+# entropy_tmp = Matrix(n,cls, sfix)
+# @for_range_opt([n,cls])
+# def _(i,j):
+#     entropy_tmp[i][j] = -predictions[i][j] * mpc_math.log2_fx(predictions[i][j]) / log2e
 
-entropy = Array(n,sfix)
-@for_range_opt(n)
-def _(i):
-    entropy[i] = sum(x for x in entropy_tmp[i])
+# entropy = Array(n,sfix)
+# @for_range_opt(n)
+# def _(i):
+#     entropy[i] = sum(x for x in entropy_tmp[i])
 
-uncertainty_score = sum(x for x in entropy) / sfix(n)
-test(uncertainty_score, "Uncertainty score")
+# uncertainty_score = sum(x for x in entropy) / sfix(n)
+# test(uncertainty_score, "Uncertainty score")
     
-# Compute cross-entropy loss
-temp_array = Matrix(n, cls, sfix)
-@for_range_opt([n,cls])
-def _(i,j):
-    temp_array[i][j] = labels[i][j] * predictions[i][j]
+# # Compute cross-entropy loss
+# temp_array = Matrix(n, cls, sfix)
+# @for_range_opt([n,cls])
+# def _(i,j):
+#     temp_array[i][j] = labels[i][j] * predictions[i][j]
 
-total_loss = Array(n,sfix)
-@for_range_opt(n)
-def _(i):
-    total_loss[i] = -mpc_math.log2_fx(sum(x for x in temp_array[i])) / log2e
+# total_loss = Array(n,sfix)
+# @for_range_opt(n)
+# def _(i):
+#     total_loss[i] = -mpc_math.log2_fx(sum(x for x in temp_array[i])) / log2e
 
-loss_score = sum(x for x in total_loss) / sfix(n)
+# loss_score = sum(x for x in total_loss) / sfix(n)
 
-test(loss_score, "Loss score")
+# test(loss_score, "Loss score")
 
-total_score = alpha_1 * diversity_score + alpha_2 * uncertainty_score + alpha_3 * loss_score
+#total_score = alpha_1 * diversity_score + alpha_2 * uncertainty_score + alpha_3 * loss_score
     
-test(total_score, "Final Valuation")
+#test(total_score, "Final Valuation")
     
