@@ -23,3 +23,7 @@ cd MP-SPDZ
 make setup
 make -j8 mascot-party.x
 ```
+
+## Running the examples
+
+Simply go to the folder of the scenario you want to run `[single-point/multi-point]/[semi-honest/malicious]` and launch the `example.ipynb` notebook. Detailed code and explanations are provided in the notebook.
