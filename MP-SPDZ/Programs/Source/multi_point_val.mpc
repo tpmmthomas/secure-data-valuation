@@ -115,7 +115,7 @@ temp_array = Matrix(n, cls, sfix)
 @for_range_opt(n)
 def _(i):
     for j in range(cls):
-        temp_array[i][j] = label[i][j] * predictions[i][j]
+        temp_array[i][j] = labels[i][j] * predictions[i][j]
 
 total_loss = Array(n,sfix)
 @for_range_opt(n)
