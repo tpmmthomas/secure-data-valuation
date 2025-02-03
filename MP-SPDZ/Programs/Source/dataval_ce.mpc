@@ -28,3 +28,4 @@ total_loss = -mpc_math.log2_fx(total_prob) / log2e
 print_ln('Cross Entropy loss: %s', total_loss.reveal())
 
 
+ 

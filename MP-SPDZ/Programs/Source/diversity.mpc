@@ -1,0 +1,56 @@
+n = 100;   # Number of points Bob has
+m = 10;    # Number of cluster centers Alice has
+d = 100;   # Dimensionality of each point/center
+
+bob_images = Matrix(n,d,sfix)
+
+bob_images.input_from(0)
+
+# @for_range_opt([n,d])
+# def _(i,j):
+#     bob_images[i][j] = sfix.get_input_from(0)
+
+cluster_centers = Matrix(m,d,sfix)
+
+cluster_centers.input_from(1)
+
+# @for_range_opt([m,d])
+# def _(i,j):
+#     cluster_centers[i][j] = sfix.get_input_from(1)
+
+pairwise_distances = Matrix(n,m,sfix)
+
+@for_range_opt([n,m])
+def _(i,j):
+    diff = bob_images[i] - cluster_centers[j]
+    pairwise_distances[i][j] = sfix.dot_product(diff,diff)
+
+def secure_minimum(arr):
+    """
+    Compute the minimum of an array using a tree-based reduction.
+    Faster than iterating linearly.
+    """
+    min_val = arr[0]  # Initialize min with first element
+    for j in range(1, len(arr)):
+        min_val = (arr[j] < min_val).if_else(arr[j], min_val)  # Secure conditional assignment
+    return min_val
+
+# min_distances = Matrix(n,m-1,sfix) 
+
+# @for_range_opt(n)
+# def _(i):
+#     min_distances[i][0] = (pairwise_distances[i][0]< pairwise_distances[i][1]).if_else(pairwise_distances[i][0],pairwise_distances[i][1])
+
+# @for_range_opt([n,m-2])
+# def _(i,j):
+#     min_distances[i][j+1] = (min_distances[i][j] < pairwise_distances[i][j+2]).if_else(min_distances[i][j],pairwise_distances[i][j+2])
+
+real_min_dist = Array(n,sfix)
+@for_range_opt(n)
+def _(i):
+    real_min_dist[i] = secure_minimum(pairwise_distances[i])  # Logarithmic reduction
+# @for_range_opt(n)
+# def _(i):
+#     real_min_dist[i] = min_distances[i][m-2]
+
+print_ln('Min distances: %s', real_min_dist.reveal())
