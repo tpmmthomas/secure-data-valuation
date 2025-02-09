@@ -1,0 +1,31 @@
+program.options_from_args()
+
+ground_truth = Array(10,sfix)
+prediction = Array(10,sfix)
+
+@for_range_opt(10)
+def _(i):
+    ground_truth[i] = sfix.get_input_from(0)
+
+@for_range_opt(10)
+def _(i):
+    prediction[i] = sfix.get_input_from(1)
+
+temp_array = Array(10, sfix)
+
+from Compiler import mpc_math
+
+@for_range(10)
+def f(i):
+    temp_array[i] = ground_truth[i] * prediction[i]
+
+total_prob = sum(x for x in temp_array)
+
+log2e = sfix(1.44269504)
+
+total_loss = -mpc_math.log2_fx(total_prob) / log2e
+
+print_ln('Cross Entropy loss: %s', total_loss.reveal())
+
+
+ 

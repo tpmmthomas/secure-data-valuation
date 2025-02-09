@@ -1,0 +1,106 @@
+# Set precision for fixed-point numbers (sfix)
+# 16 bits after the decimal and 31 bits in total
+sfix.set_precision(16, 31)
+
+# Set the output precision in decimal digits
+print_float_precision(6)
+
+# Define alpha coefficients as public sfix numbers
+alpha_1 = sfix(0.3)
+alpha_2 = sfix(0.3)
+alpha_3 = sfix(0.4)
+
+# Parameters
+n = 10  # Number of data points
+m = 3072 # Number of features per data point
+cls = 10 # Number of classes
+
+
+# Define the test function to reveal and print values
+def test(actual, description=""):
+    actual_revealed = actual.reveal()
+    if description:
+        print_ln('%s: %s', description, actual_revealed)
+    else:
+        print_ln('Value: %s', actual_revealed)
+
+#Load Bob's data points and labels
+data = Matrix(n, m, sfix)
+labels = Matrix(n, cls, sfix)
+
+@for_range_opt([n,m])
+def _(i,j):
+    data[i][j] = sfix.get_input_from(0)
+
+@for_range_opt([n,cls])
+def _(i,j):
+    labels[i][j] = sfix.get_input_from(0)
+
+# # Compute mean per feature
+# mean_per_feature = Array(m,sfix)
+# @for_range_opt(m)
+# def _(j):
+#     mean_per_feature[j] = sum([data[i][j] for i in range(n)]) / sfix(n)
+
+# # Compute mean square per feature
+# mean_sq_per_feature = Array(m, sfix)
+# @for_range_opt(m)
+# def _(j):
+#     mean_sq_per_feature[j] = sum([data[i][j] * data[i][j] for i in range(n)]) / sfix(n)
+
+# # Compute variance per feature: var = mean_sq - mean^2
+# var_per_feature = Array(m, sfix)
+# @for_range_opt(m)
+# def _(j):
+#     var_per_feature[j] = mean_sq_per_feature[j] - (mean_per_feature[j] * mean_per_feature[j])
+
+from Compiler import mpc_math
+# # Compute standard deviation per feature using sqrt_fx from mpc_math
+# std_per_feature = Array(m, sfix)
+# @for_range_opt(m)
+# def _(j):
+#     std_per_feature[j] = mpc_math.sqrt(var_per_feature[j])
+    
+# diversity_sum = sum([std_per_feature[j] for j in range(m)])    
+# diversity_score = diversity_sum / sfix(m)
+# test(diversity_score, "Diversity score")    
+
+predictions = Matrix(n,cls, sfix)
+@for_range_opt([n,cls])
+def _(i,j):
+    predictions[i][j] = sfix.get_input_from(1)
+
+# Compute entropy for uncertainty score
+log2e = sfix(1.44269504)
+entropy_tmp = Matrix(n,cls, sfix)
+@for_range_opt([n,cls])
+def _(i,j):
+    entropy_tmp[i][j] = -predictions[i][j] * mpc_math.log2_fx(predictions[i][j]) / log2e
+
+entropy = Array(n,sfix)
+@for_range_opt(n)
+def _(i):
+    entropy[i] = sum(x for x in entropy_tmp[i])
+
+uncertainty_score = sum(x for x in entropy) / sfix(n)
+test(uncertainty_score, "Uncertainty score")
+    
+# # Compute cross-entropy loss
+# temp_array = Matrix(n, cls, sfix)
+# @for_range_opt([n,cls])
+# def _(i,j):
+#     temp_array[i][j] = labels[i][j] * predictions[i][j]
+
+# total_loss = Array(n,sfix)
+# @for_range_opt(n)
+# def _(i):
+#     total_loss[i] = -mpc_math.log2_fx(sum(x for x in temp_array[i])) / log2e
+
+# loss_score = sum(x for x in total_loss) / sfix(n)
+
+# test(loss_score, "Loss score")
+
+# total_score = alpha_1 * diversity_score + alpha_2 * uncertainty_score + alpha_3 * loss_score
+    
+# test(total_score, "Final Valuation")
+    
