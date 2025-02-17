@@ -12,12 +12,14 @@ class SingleDataValuation:
         raise NotImplementedError("Subclasses must implement this method")
 
 class MultiDataValuation:
-    def __init__(self, model: nn.Module, data_points, labels):
+    def __init__(self, model: nn.Module, data_points, labels, trainer_data):
         self.model = model
         self.data_points = data_points
         self.labels = labels
+        self.trainer_data = trainer_data
         self.selected_indices = None
         self.value = None
+        self.is_run = False
 
     def select_data(self):
         raise NotImplementedError("Subclasses must implement this method")

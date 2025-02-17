@@ -101,7 +101,8 @@ class MultiKMeansValuation(MultiDataValuation):
         flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
         kmeans = KMeans(n_clusters=self.K, random_state=0).fit(flattened_images)
         cluster_labels = kmeans.labels_
-        # cluster_centers = kmeans.cluster_centers_
+        # cluster_centers = kmeans.cluster_center
+        # s_
         #Loop through each individual cluster
         for cluster in range(self.K):
             #Retrieve indices and images of the cluster
