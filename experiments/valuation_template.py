@@ -20,6 +20,10 @@ class MultiDataValuation:
         self.selected_indices = None
         self.value = None
         self.is_run = False
+        
+
+    def dim_reduction(self):
+        raise NotImplementedError("Subclasses must implement this method")
 
     def select_data(self):
         raise NotImplementedError("Subclasses must implement this method")
