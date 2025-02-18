@@ -6,6 +6,7 @@ from sklearn.cluster import KMeans
 import numpy as np
 from sklearn.random_projection import SparseRandomProjection
 from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.metrics import pairwise_distances
 
 class SingleLossValuation(SingleDataValuation):
     def __init__(self, model: nn.Module, data_point, label, loss_fn):
@@ -34,6 +35,33 @@ class SingleShapleyValuation(SingleDataValuation):
     def data_value(self):
         shapleyValues = self.MC.run([0])
         return shapleyValues[0]
+    
+class SingleRandomValuation(SingleDataValuation):
+    def __init__(self, model: nn.Module, data_point, label):
+        super().__init__(model, data_point, label)
+        self.value = None
+
+    def data_value(self):
+        self.value = torch.rand(1).item()
+        return self.value
+    
+class SingleEntropyValuation(SingleDataValuation):
+    def __init__(self, model: nn.Module, data_point, label):
+        super().__init__(model, data_point, label)
+        self.value = None
+
+    def data_value(self):
+        self.model.eval()
+        with torch.no_grad():
+            data_point_batch = self.data_point.unsqueeze(0)  # Add batch dimension
+            output = self.model(data_point_batch)
+            entropy = -torch.sum(output * torch.log(output + 1e-9), dim=1)
+        self.value = entropy.item()
+        return self.value
+    
+
+    
+
 
 
 class MultiKMeansValuation(MultiDataValuation):
@@ -54,8 +82,8 @@ class MultiKMeansValuation(MultiDataValuation):
         flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
         flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
         transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
-        self.reduced_images = transformer.fit_transform(flattened_images)
-        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData)
+        self.reduced_images = transformer.fit_transform(flattened_images.cpu())
+        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData.cpu())
         return True
 
     def summarize_trained_data(self):
@@ -88,9 +116,10 @@ class MultiKMeansValuation(MultiDataValuation):
 
     def data_value(self):
         #TODO written by copilot, fix manually later
+        self.select_data()
         total_score = 0
         chosen_points = self.data_points[self.selected_idx]
-        chosen_reduced_points = self.reduced_images[self.selected_idx]
+        chosen_reduced_points = torch.tensor(np.array(self.reduced_images[self.selected_idx]))
         chosen_labels = self.labels[self.selected_idx]
         #Uncertainty score, Diversity score and Loss score
         # Compute loss score
@@ -135,8 +164,8 @@ class MultiUncKMeansValuation(MultiDataValuation):
         flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
         flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
         transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
-        self.reduced_images = transformer.fit_transform(flattened_images)
-        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData)
+        self.reduced_images = transformer.fit_transform(flattened_images.cpu())
+        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData.cpu())
         return True
 
     def summarize_trained_data(self):
@@ -161,7 +190,7 @@ class MultiUncKMeansValuation(MultiDataValuation):
             #Compute an uncertainty score
             self.model.eval()
             with torch.no_grad():
-                outputs = self.model(self.data_points[cluster_indices])
+                outputs = self.model(self.data_points[cluster_indices]).cpu()
                 unc_scores = (-torch.sum(outputs * torch.log(outputs + 1e-9), dim=1)).numpy()
 
             sorted_indices = np.argsort(unc_scores)
@@ -171,7 +200,7 @@ class MultiUncKMeansValuation(MultiDataValuation):
         return True
 
     def data_value(self):
-        #TODO written by copilot, fix manually later
+        self.select_data()
         total_score = 0
         chosen_points = self.data_points[self.selected_idx]
         chosen_reduced_points = self.reduced_images[self.selected_idx]
@@ -191,7 +220,7 @@ class MultiUncKMeansValuation(MultiDataValuation):
         diversity_score = 0
         for point in chosen_reduced_points:
             #Compute the min. distance of point to any of self.trained_clusters
-            min_distance = torch.min(torch.linalg.norm(point - self.trained_clusters, dim=1)).item()
+            min_distance = torch.min(torch.linalg.norm(torch.tensor(point) - self.trained_clusters, dim=1)).item()
             diversity_score += min_distance
         diversity_score /= len(chosen_reduced_points)
         diversity_score /= self.avg_l2norm #Normalization
@@ -219,8 +248,8 @@ class MultiSubModValuation(MultiDataValuation):
         flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
         flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
         transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
-        self.reduced_images = transformer.fit_transform(flattened_images)
-        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData)
+        self.reduced_images = transformer.fit_transform(flattened_images.cpu())
+        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData.cpu())
         return True
 
     def summarize_trained_data(self):
@@ -258,6 +287,7 @@ class MultiSubModValuation(MultiDataValuation):
 
     def data_value(self):
         #TODO written by copilot, fix manually later
+        self.select_data()
         total_score = 0
         chosen_points = self.data_points[self.selected_idx]
         chosen_reduced_points = self.reduced_images[self.selected_idx]
@@ -277,7 +307,7 @@ class MultiSubModValuation(MultiDataValuation):
         diversity_score = 0
         for point in chosen_reduced_points:
             #Compute the min. distance of point to any of self.trained_clusters
-            min_distance = torch.min(torch.linalg.norm(point - self.trained_clusters, dim=1)).item()
+            min_distance = torch.min(torch.linalg.norm(torch.tensor(point) - self.trained_clusters, dim=1)).item()
             diversity_score += min_distance
         diversity_score /= len(chosen_reduced_points)
         diversity_score /= self.avg_l2norm #Normalization
@@ -285,3 +315,142 @@ class MultiSubModValuation(MultiDataValuation):
         total_score = self.a1 * loss_score + self.a2 * uncertainty_score + self.a3 *  diversity_score
         self.value = total_score
         return self.value
+    
+class MultiRandomValuation(MultiDataValuation):
+    def __init__(self, model: nn.Module, data_points, labels, trainer_data):
+        super().__init__(model, data_points, labels, trainer_data)
+        self.value = None
+        
+    def dim_reduction(self):
+        return True
+    
+    def select_data(self):
+        return True
+
+    def data_value(self):
+        self.value = torch.rand(1).item()
+        return self.value
+    
+class MultiEntropyValuation(MultiDataValuation):
+    def __init__(self, model: nn.Module, data_points, labels, trainer_data, num_clusters):
+        super().__init__(model, data_points, labels, trainer_data)
+        self.K = num_clusters
+        self.value = None
+        self.dim_reduction()
+    
+    def dim_reduction(self):
+        #Reduce dimension by random projection
+        flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
+        flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
+        transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
+        self.reduced_images = transformer.fit_transform(flattened_images)
+        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData)
+        return True
+    
+    def select_data(self):
+        # K-means clustering
+        self.selected_idx = []
+        kmeans = KMeans(n_clusters=self.K, random_state=0).fit(self.reduced_images)
+        cluster_labels = kmeans.labels_
+        cluster_centers = kmeans.cluster_centers_
+        #Loop through each individual cluster
+        for cluster in range(self.K):
+            #Retrieve indices and images of the cluster
+            cluster_indices = np.where(cluster_labels == cluster)[0]
+            cluster_images = self.reduced_images[cluster_indices]
+
+            distances = np.linalg.norm(cluster_images - cluster_centers[cluster], axis=1)
+            sorted_indices = np.argsort(distances)
+            self.selected_idx.append(cluster_indices[sorted_indices[0]])
+
+        assert len(self.selected_idx) == self.K, "Number of selected indices must equal K"
+        return True  
+
+    def data_value(self):
+        chosen_points = self.data_points[self.selected_idx]
+        self.model.eval()
+        with torch.no_grad():
+            output = self.model(chosen_points)
+            entropy = (-torch.sum(output * torch.log(output + 1e-9), dim=1)).mean()
+        self.value = entropy.item()
+        return self.value
+    
+    
+class MultiCoreSetValuation(MultiDataValuation):
+    def __init__(self, model: nn.Module, data_points, labels, trainer_data, num_clusters):
+        super().__init__(model, data_points, labels, trainer_data)
+        self.value = None
+        self.min_distances = None
+        self.already_selected = []
+        self.n_obs = self.data_points.shape[0]
+        self.N = num_clusters
+        self.dim_reduction() 
+        
+    def dim_reduction(self):
+        #Reduce dimension by random projection
+        flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
+        flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
+        transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
+        self.reduced_images = transformer.fit_transform(flattened_images)
+        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData)
+        self.all_features = np.vstack([self.reduced_trainerData, self.reduced_images])
+        self.already_selected = [i for i in range(self.reduced_trainerData.shape[0])]
+        return True
+
+    def update_distances(self, cluster_centers, only_new=True, reset_dist=False):
+        """Update min distances given cluster centers.
+
+        Args:
+        cluster_centers: indices of cluster centers
+        only_new: only calculate distance for newly selected points and update
+            min_distances.
+        rest_dist: whether to reset min_distances.
+        """
+
+        if reset_dist:
+            self.min_distances = None
+        if only_new:
+            cluster_centers = [d for d in cluster_centers
+                                if d not in self.already_selected]
+        if cluster_centers:
+            # Update min_distances for all examples given new cluster center.
+            x = self.all_features[cluster_centers]
+            dist = pairwise_distances(self.all_features, x, metric='euclidean')
+
+            if self.min_distances is None:
+                self.min_distances = np.min(dist, axis=1).reshape(-1,1)
+            else:
+                self.min_distances = np.minimum(self.min_distances, dist)
+
+    def data_value(self):
+        """
+        Diversity promoting active learning method that greedily forms a batch
+        to minimize the maximum distance to a cluster center among all unlabeled
+        datapoints.
+
+        Args:
+        model: model with scikit-like API with decision_function implemented
+        already_selected: index of datapoints already selected
+        N: batch size
+
+        Returns:
+        indices of points selected to minimize distance to cluster centers
+        """
+
+        self.update_distances(self.already_selected, only_new=True, reset_dist=False)
+
+        new_batch = []
+
+        for _ in range(self.N):
+            if self.already_selected is None:
+                # Initialize centers with a randomly selected datapoint
+                ind = np.random.choice(np.arange(self.n_obs))
+            else:
+                ind = np.argmax(self.min_distances)
+        # New examples should not be in already selected since those points
+        # should have min_distance of zero to a cluster center.
+            self.already_selected.append(ind)
+            self.update_distances([ind], only_new=True, reset_dist=False)
+            new_batch.append(ind)
+
+        return max(self.min_distances)
