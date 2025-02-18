@@ -1,0 +1,4 @@
+CIFAR10 / Resnet18 Spearman Rank Correlation Coefficient
+Random/Shapley: -0.14852340936374547
+Entropy/Shapley: 0.29498199279711884
+Loss/Shapley: -0.4822569027611044

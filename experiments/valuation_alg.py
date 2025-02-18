@@ -29,8 +29,9 @@ class SingleShapleyValuation(SingleDataValuation):
         self.trainer_data = trainer_data
         self.value = None
         #Insert the data point as the first element of the trainer data
-        self.trainer_data = torch.cat([self.data_point.unsqueeze(0), self.trainer_data], dim=0)
-        self.MC = MonteCarloShapley(self.trainer_data, testset, L = 1,  beta = 1, c = 1, a = 0.05, b = 0.05, sup = 5, num_classes = 10, datasize = datasize, learning_rate = learning_rate, epochs = epochs, device = device, batch_size = batch_size)
+        trainer_data.insert(0, (data_point, label))
+        self.trainer_data = trainer_data
+        self.MC = MonteCarloShapley(model,self.trainer_data, testset, L = 1,  beta = 1, c = 1, a = 0.05, b = 0.05, sup = 5, num_classes = 10, datasize = datasize, learning_rate = learning_rate, epochs = epochs, device = device, batch_size = batch_size)
 
     def data_value(self):
         shapleyValues = self.MC.run([0])
@@ -55,6 +56,8 @@ class SingleEntropyValuation(SingleDataValuation):
         with torch.no_grad():
             data_point_batch = self.data_point.unsqueeze(0)  # Add batch dimension
             output = self.model(data_point_batch)
+            #Softmax
+            output = nn.Softmax(dim=1)(output)
             entropy = -torch.sum(output * torch.log(output + 1e-9), dim=1)
         self.value = entropy.item()
         return self.value
@@ -83,7 +86,7 @@ class MultiKMeansValuation(MultiDataValuation):
         flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
         transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
         self.reduced_images = transformer.fit_transform(flattened_images.cpu())
-        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData.cpu())
+        self.reduced_trainerData = transformer.transform(flattened_trainerData.cpu())
         return True
 
     def summarize_trained_data(self):
@@ -130,6 +133,7 @@ class MultiKMeansValuation(MultiDataValuation):
             loss_score = loss.item()
 
         # Compute uncertainty score
+        outputs = nn.Softmax(dim=1)(outputs)
         uncertainty_score = -torch.sum(outputs * torch.log(outputs + 1e-9), dim=1).mean().item()
 
         # Compute diversity score
@@ -140,7 +144,6 @@ class MultiKMeansValuation(MultiDataValuation):
             diversity_score += min_distance
         diversity_score /= len(chosen_reduced_points)
         diversity_score /= self.avg_l2norm #Normalization
-
         total_score = self.a1 * loss_score + self.a2 * uncertainty_score + self.a3 *  diversity_score
         self.value = total_score
         return self.value
@@ -165,7 +168,7 @@ class MultiUncKMeansValuation(MultiDataValuation):
         flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
         transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
         self.reduced_images = transformer.fit_transform(flattened_images.cpu())
-        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData.cpu())
+        self.reduced_trainerData = transformer.transform(flattened_trainerData.cpu())
         return True
 
     def summarize_trained_data(self):
@@ -214,6 +217,7 @@ class MultiUncKMeansValuation(MultiDataValuation):
             loss_score = loss.item()
 
         # Compute uncertainty score
+        outputs = nn.Softmax(dim=1)(outputs)
         uncertainty_score = -torch.sum(outputs * torch.log(outputs + 1e-9), dim=1).mean().item()
 
         # Compute diversity score
@@ -249,7 +253,7 @@ class MultiSubModValuation(MultiDataValuation):
         flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
         transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
         self.reduced_images = transformer.fit_transform(flattened_images.cpu())
-        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData.cpu())
+        self.reduced_trainerData = transformer.transform(flattened_trainerData.cpu())
         return True
 
     def summarize_trained_data(self):
@@ -301,6 +305,7 @@ class MultiSubModValuation(MultiDataValuation):
             loss_score = loss.item()
 
         # Compute uncertainty score
+        outputs = nn.Softmax(dim=1)(outputs)
         uncertainty_score = -torch.sum(outputs * torch.log(outputs + 1e-9), dim=1).mean().item()
 
         # Compute diversity score
@@ -343,8 +348,8 @@ class MultiEntropyValuation(MultiDataValuation):
         flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
         flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
         transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
-        self.reduced_images = transformer.fit_transform(flattened_images)
-        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData)
+        self.reduced_images = transformer.fit_transform(flattened_images.cpu())
+        self.reduced_trainerData = transformer.transform(flattened_trainerData.cpu())
         return True
     
     def select_data(self):
@@ -367,10 +372,12 @@ class MultiEntropyValuation(MultiDataValuation):
         return True  
 
     def data_value(self):
+        self.select_data()
         chosen_points = self.data_points[self.selected_idx]
         self.model.eval()
         with torch.no_grad():
             output = self.model(chosen_points)
+            output = nn.Softmax(dim=1)(output)
             entropy = (-torch.sum(output * torch.log(output + 1e-9), dim=1)).mean()
         self.value = entropy.item()
         return self.value
@@ -391,8 +398,8 @@ class MultiCoreSetValuation(MultiDataValuation):
         flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
         flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
         transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
-        self.reduced_images = transformer.fit_transform(flattened_images)
-        self.reduced_trainerData = transformer.fit_transform(flattened_trainerData)
+        self.reduced_images = transformer.fit_transform(flattened_images.cpu())
+        self.reduced_trainerData = transformer.transform(flattened_trainerData.cpu())
         self.all_features = np.vstack([self.reduced_trainerData, self.reduced_images])
         self.already_selected = [i for i in range(self.reduced_trainerData.shape[0])]
         return True
@@ -437,8 +444,7 @@ class MultiCoreSetValuation(MultiDataValuation):
         indices of points selected to minimize distance to cluster centers
         """
 
-        self.update_distances(self.already_selected, only_new=True, reset_dist=False)
-
+        self.update_distances(self.already_selected, only_new=False, reset_dist=False)
         new_batch = []
 
         for _ in range(self.N):
@@ -449,8 +455,7 @@ class MultiCoreSetValuation(MultiDataValuation):
                 ind = np.argmax(self.min_distances)
         # New examples should not be in already selected since those points
         # should have min_distance of zero to a cluster center.
-            self.already_selected.append(ind)
             self.update_distances([ind], only_new=True, reset_dist=False)
+            self.already_selected.append(ind)
             new_batch.append(ind)
-
-        return max(self.min_distances)
+        return max(self.min_distances)[0]

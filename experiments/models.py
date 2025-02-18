@@ -39,7 +39,6 @@ class cnnNet(nn.Module):
         self.dropout2 = nn.Dropout(0.5)
         self.fc1 = nn.Linear(9216, 128)
         self.fc2 = nn.Linear(128, 10)
-        self.act = nn.Softmax(dim=1)
 
     def forward(self, x):
         x = self.conv1(x)
@@ -52,13 +51,30 @@ class cnnNet(nn.Module):
         x = self.fc1(x)
         x = F.relu(x)
         x = self.dropout2(x)
-        x = self.fc2(x)
-        output = self.act(x)
+        output = self.fc2(x)
+        # output = self.act(x)
         return output
+    
+class ResNetCIFAR10(nn.Module):
+    def __init__(self):
+        super(ResNetCIFAR10, self).__init__()
+        # Load a pre-trained ResNet-18
+        self.resnet = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        # Replace the final fully connected layer with one for 10 classes
+        self.resnet.fc = nn.Linear(self.resnet.fc.in_features, 10)
+        # Define a softmax layer to convert logits to probabilities (for inference)
+        # self.softmax = nn.Softmax(dim=1)
+    
+    def forward(self, x):
+        # Get logits from the ResNet
+        logits = self.resnet(x)
+        # Compute probabilities using softmax (for inference/analysis)
+        # probs = self.softmax(logits)
+        return logits
     
 def get_model(model):
     if model == "resnet18":
-        outmodel = models.resnet18(weights=models.ResNet18_Weights.DEFAULT)
+        outmodel = ResNetCIFAR10()
     elif model == "vgg16":
         outmodel = models.vgg16(pretrained=True)
     elif model == "lenet":

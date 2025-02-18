@@ -1,0 +1,4 @@
+MNIST / CNN Spearman Rank Correlation Coefficient
+Random/Shapley: -0.06890756302521008
+Entropy/Shapley: -0.48878751500600237
+Loss/Shapley: -0.5419927971188475
