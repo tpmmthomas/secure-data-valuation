@@ -1,5 +1,6 @@
 import torch.nn as nn
 import torch
+import numpy as np
 
 class SingleDataValuation:
     def __init__(self, model: nn.Module, data_point, label):
@@ -26,15 +27,15 @@ class MultiDataValuation:
         if isinstance(data_points, torch.Tensor):
             self.data_points = data_points
         else:
-            self.data_points = torch.tensor(data_points)
+            self.data_points = torch.tensor(np.array(data_points))
         if isinstance(labels, torch.Tensor):
             self.labels = labels
         else:
-            self.labels = torch.tensor(labels)
+            self.labels = torch.tensor(np.array(labels))
         if isinstance(trainer_data, torch.Tensor):
             self.trainer_data = trainer_data
         else:
-            self.trainer_data = torch.tensor(trainer_data)
+            self.trainer_data = torch.tensor(np.array(trainer_data))
         if torch.cuda.is_available():
             self.data_points = self.data_points.cuda()
             self.labels = self.labels.cuda()

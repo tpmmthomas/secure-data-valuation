@@ -2,6 +2,11 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+import numpy as np
+from sklearn.model_selection import train_test_split
+from sklearn.linear_model import LogisticRegression
+from sklearn.svm import SVC
+from sklearn.metrics import accuracy_score, classification_report
 
 class LeNet(nn.Sequential):
     """
@@ -87,4 +92,13 @@ def get_model(model):
     if torch.cuda.is_available():
         outmodel = outmodel.cuda()
     
+    return outmodel
+
+
+def get_convex_model(model,random_state=42):
+    if model == "logistic":
+        outmodel = LogisticRegression(max_iter=1000, random_state=random_state)
+    elif model == "svm":
+        outmodel = SVC(random_state=random_state)
+        
     return outmodel

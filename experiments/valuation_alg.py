@@ -15,13 +15,19 @@ class SingleLossValuation(SingleDataValuation):
         self.value = None
 
     def data_value(self):
-        self.model.eval()
-        with torch.no_grad():
-            data_point_batch = self.data_point.unsqueeze(0)  # Add batch dimension
-            output = self.model(data_point_batch)
-            loss = self.loss_fn(output, self.label.unsqueeze(0))
-        self.value = loss.item()
-        return loss.item()
+        if isinstance(self.model, nn.Module):
+            self.model.eval()
+            with torch.no_grad():
+                data_point_batch = self.data_point.unsqueeze(0)  # Add batch dimension
+                output = self.model(data_point_batch)
+                loss = self.loss_fn(output, self.label.unsqueeze(0))
+            self.value = loss.item()
+            return loss.item()
+        # else:
+        #     output = torch.tensor(self.model.predict([self.data_point]))
+        #     loss = self.loss_fn(output, self.label.unsqueeze(0))
+        #     self.value = loss.item()
+        #     return loss.item()
     
 class SingleShapleyValuation(SingleDataValuation):
     def __init__(self, model: nn.Module, data_point, label, trainer_data, testset,datasize,learning_rate,epochs,device,batch_size):
@@ -62,10 +68,6 @@ class SingleEntropyValuation(SingleDataValuation):
         self.value = entropy.item()
         return self.value
     
-
-    
-
-
 
 class MultiKMeansValuation(MultiDataValuation):
     def __init__(self, model: nn.Module, data_points, labels, trainer_data, loss_fn, cluster_size, a1,a2,a3):
@@ -118,7 +120,6 @@ class MultiKMeansValuation(MultiDataValuation):
         return True
 
     def data_value(self):
-        #TODO written by copilot, fix manually later
         self.select_data()
         total_score = 0
         chosen_points = self.data_points[self.selected_idx]
