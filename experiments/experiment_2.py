@@ -11,276 +11,174 @@ import tqdm
 import copy
 import random
 import os
+from torch.utils.data import DataLoader
 
-for seed in range(1,6):
+# Set desired batch size for training and evaluation.
+BATCH_SIZE = 10
+
+for seed in range(1, 6):
 
     torch.manual_seed(seed)
 
-
-    DATASET = "cifar10"
-    MODEL = "resnet18"
-    LR = 1e-5
+    DATASET = "mnist"
+    MODEL = "cnn"
+    LR = 1e-4
 
     def fprint(msg):
         print(msg)
         with open(f"results/exp2_{DATASET}_{MODEL}_{seed}.txt", "a") as f:
             f.write(msg + "\n")
 
-    #Create the file and clear it 
+    # Create/clear the results file.
     with open(f"results/exp2_{DATASET}_{MODEL}_{seed}.txt", "w") as f:
         pass
 
+    # Load dataset and split.
     dataset = get_dataset(DATASET)
-    train_data, remain_data = split_dataset(dataset, 1000,20000)
+    pretrain_size = 20
+    pool_size = 500
+    num_batch = 10
+    per_batch = 50
+    assert num_batch * per_batch == pool_size
+    test_size = 100
+    train_data, remain_data = split_dataset(dataset, pretrain_size, pool_size + test_size)
     model = get_model(MODEL).cuda()
 
-    #Assume we have 10 batches of data
+    # Create 10 batches from the remaining data.
     batches = []
-    total = 20000
-    for _ in range(10):
-        batch, remain_data = split_dataset(remain_data, 1000, total-1000)
+    total = pool_size + test_size
+    for _ in range(num_batch):
+        batch, remain_data = split_dataset(remain_data, per_batch, total - per_batch)
         var = random.random() * 0.1 
-        batch = add_noise(batch,var)
+        batch = add_noise(batch, var)
         batches.append(batch)
-        total -= 1000
-    assert len(remain_data) == 10000
+        total -= per_batch
+    assert len(remain_data) == test_size
     test_data = remain_data
 
-    #Trian the model with train_data
+    # Train the model on the initial train_data (with noise) using a DataLoader.
     train_data = add_noise(train_data, 0.5)
-
+    train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     num_epochs = 10
 
     for epoch in range(num_epochs):
         model.train()
+        # Optionally set BatchNorm layers to eval mode.
         for m in model.modules():
             if isinstance(m, nn.BatchNorm2d):
                 m.eval()
-        for data, label in train_data:
-            data = data.unsqueeze(0)
-            label = [label]
-            data, label = data.cuda(), torch.tensor(label).cuda()
-            label_one_hot = F.one_hot(label, num_classes=10).float()
-            # print(label_one_hot)
+        epoch_loss = 0.0
+        for data, label in train_loader:
+            data, label = data.cuda(), label.cuda()
             optimizer.zero_grad()
             output = model(data)
-            loss = F.cross_entropy(output, label_one_hot)
+            loss = F.cross_entropy(output, label)
             loss.backward()
             optimizer.step()
-            
-        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {loss.item()}")
+            epoch_loss += loss.item() * data.size(0)
+        avg_loss = epoch_loss / len(train_data)
+        print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
+
+    # Evaluate on test set using a DataLoader.
     model.eval()
     correct = 0
-    total = 0
+    total_samples = 0
+    test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False)
     with torch.no_grad():
-        for data, label in test_data:
-            data = data.unsqueeze(0).cuda()
-            label = torch.tensor([label]).cuda()
+        for data, label in test_loader:
+            data, label = data.cuda(), label.cuda()
             output = model(data)
             _, predicted = torch.max(output, 1)
-            total += label.size(0)
+            total_samples += label.size(0)
             correct += (predicted == label).sum().item()
+    accuracy_init = correct / total_samples
 
-    accuracy_init = correct / total
-        
-
-
-    #We gradually feed these 10 batches to training to see which is best.
+    # Save the current model state for resetting between valuation methods.
     current_model_dict = copy.deepcopy(model.state_dict())
 
+    # Define a helper function to run the valuation selection loop.
+    def run_valuation(method_name, ValuationClass, extra_args_fn):
+        # Reset the model state.
+        model.load_state_dict(current_model_dict)
+        selected_batch_sequence = []
+        acc_sequence = [accuracy_init]
+        # Define loss function locally.
+        loss_fn = nn.CrossEntropyLoss()
+        data_alice = [np.array(x[0]) for x in train_data]
+        # Start with the initial training data.
+        all_train_data_method = train_data.copy()
+        # Determine extra arguments (if any) based on the method.
+        extra_args = extra_args_fn(loss_fn)
+        while len(selected_batch_sequence) < len(batches):
+            best_batch = None
+            best_score = None
+            for i in range(len(batches)):
+                if i in selected_batch_sequence:
+                    continue
+                data_batch = [np.array(x[0]) for x in batches[i]]
+                label_batch = [np.eye(10)[x[1]] for x in batches[i]]
+                val = ValuationClass(model, data_batch, label_batch, data_alice, *extra_args)
+                dv = val.data_value()
+                if best_score is None or dv > best_score:
+                    best_score = dv
+                    best_batch = i
+            selected_batch_sequence.append(best_batch)
+            # Extend training data with the selected batch.
+            all_train_data_method = all_train_data_method + batches[best_batch]
+            # Evaluate the model on the test set.
+            acc = train_and_evaluate(model, all_train_data_method, test_data)
+            # Update data_alice with the newly added batch.
+            data_alice += [np.array(x[0]) for x in batches[best_batch]]
+            acc_sequence.append(acc)
+        fprint(f"{method_name} Selected batch sequence:" + str(selected_batch_sequence))
+        fprint(f"{method_name} Accuracy sequence:" + str(acc_sequence))
+
+    # The train_and_evaluate function using DataLoader.
     def train_and_evaluate(model, train_data, test_data):
         optimizer = optim.Adam(model.parameters(), lr=LR)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.97)
         num_epochs = 10
-
+        train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
         for epoch in range(num_epochs):
             model.train()
             for m in model.modules():
                 if isinstance(m, nn.BatchNorm2d):
                     m.eval()
-            for data, label in train_data:
-                data = data.unsqueeze(0)
-                label = [label]
-                data, label = data.cuda(), torch.tensor(label).cuda()
-                label_one_hot = F.one_hot(label, num_classes=10).float()
+            for data, label in train_loader:
+                data, label = data.cuda(), label.cuda()
                 optimizer.zero_grad()
                 output = model(data)
-                loss = F.cross_entropy(output, label_one_hot)
+                loss = F.cross_entropy(output, label)
                 loss.backward()
                 optimizer.step()
-                
-        #Evaluate the accuracy of the model
+                scheduler.step()
         model.eval()
         correct = 0
-        total = 0
+        total_samples = 0
+        test_loader = DataLoader(test_data, batch_size=BATCH_SIZE, shuffle=False)
         with torch.no_grad():
-            for data, label in test_data:
-                data = data.unsqueeze(0).cuda()
-                label = torch.tensor([label]).cuda()
+            for data, label in test_loader:
+                data, label = data.cuda(), label.cuda()
                 output = model(data)
                 _, predicted = torch.max(output, 1)
-                total += label.size(0)
+                total_samples += label.size(0)
                 correct += (predicted == label).sum().item()
-        
-        accuracy = correct / total
+        accuracy = correct / total_samples
         print(f"Accuracy: {accuracy * 100:.2f}%")
         return accuracy
 
-    model.load_state_dict(current_model_dict)
-    selected_batch_sequence = []
-    acc_sequence = [accuracy_init]
-    loss = nn.CrossEntropyLoss()
-    data_alice = [np.array(x[0]) for x in train_data]
-    while len(selected_batch_sequence) < len(batches):
-        best_batch = None
-        best_score = None
-        for i in range(len(batches)):
-            if i in selected_batch_sequence:
-                continue
-            data_batch = [np.array(x[0]) for x in batches[i]]
-            label_batch = [np.eye(10)[x[1]] for x in batches[i]]
-            val = MultiKMeansValuation(model, data_batch, label_batch, data_alice, loss, 10, 0.3, 0.3, 0.4)
-            dv = val.data_value()
-            if best_score is None or dv > best_score:
-                best_score = dv
-                best_batch = i
-        selected_batch_sequence.append(best_batch)
-        acc = train_and_evaluate(model, batches[best_batch], test_data)
-        data_alice += [np.array(x[0]) for x in batches[best_batch]]
-        acc_sequence.append(acc)
+    # Dictionary mapping method names to a tuple of (valuation class, lambda that returns extra args).
+    # For methods that require a loss function, the lambda uses the local loss_fn.
+    valuation_methods = {
+        "KMeans":      (MultiKMeansValuation,   lambda loss_fn: (loss_fn, 10, 0.3, 0.3, 0.4)),
+        "KMeans+Unc":  (MultiUncKMeansValuation,lambda loss_fn: (loss_fn, 10, 0.3, 0.3, 0.4)),
+        "SubMod":      (MultiSubModValuation,   lambda loss_fn: (loss_fn, 10, 0.3, 0.3, 0.4)),
+        "Random":      (MultiRandomValuation,   lambda loss_fn: ()),
+        "Entropy":     (MultiEntropyValuation,  lambda loss_fn: (10,)),
+        "CoreSet":     (MultiCoreSetValuation,  lambda loss_fn: (10,))
+    }
 
-    fprint("KMeans Selected batch sequence:" + str(selected_batch_sequence))
-    fprint("KMeans Accuracy sequence:" + str(acc_sequence))
-
-    model.load_state_dict(current_model_dict)
-    selected_batch_sequence = []
-    acc_sequence = [accuracy_init]
-    loss = nn.CrossEntropyLoss()
-    data_alice = [np.array(x[0]) for x in train_data]
-    while len(selected_batch_sequence) < len(batches):
-        best_batch = None
-        best_score = None
-        for i in range(len(batches)):
-            if i in selected_batch_sequence:
-                continue
-            data_batch = [np.array(x[0]) for x in batches[i]]
-            label_batch = [np.eye(10)[x[1]] for x in batches[i]]
-            val = MultiUncKMeansValuation(model, data_batch, label_batch, data_alice, loss, 10, 0.3, 0.3, 0.4)
-            dv = val.data_value()
-            if best_score is None or dv > best_score:
-                best_score = dv
-                best_batch = i
-        selected_batch_sequence.append(best_batch)
-        acc = train_and_evaluate(model, batches[best_batch], test_data)
-        data_alice += [np.array(x[0]) for x in batches[best_batch]]
-        acc_sequence.append(acc)
-
-    fprint("KMeans+Unc Selected batch sequence:" + str(selected_batch_sequence))
-    fprint("KMeans+Unc Accuracy sequence:" + str(acc_sequence))
-            
-            
-    model.load_state_dict(current_model_dict)
-    selected_batch_sequence = []
-    acc_sequence = [accuracy_init]
-    loss = nn.CrossEntropyLoss()
-    data_alice = [np.array(x[0]) for x in train_data]
-    while len(selected_batch_sequence) < len(batches):
-        best_batch = None
-        best_score = None
-        for i in range(len(batches)):
-            if i in selected_batch_sequence:
-                continue
-            data_batch = [np.array(x[0]) for x in batches[i]]
-            label_batch = [np.eye(10)[x[1]] for x in batches[i]]
-            val = MultiSubModValuation(model, data_batch, label_batch, data_alice, loss, 10, 0.3, 0.3, 0.4)
-            dv = val.data_value()
-            if best_score is None or dv > best_score:
-                best_score = dv
-                best_batch = i
-        selected_batch_sequence.append(best_batch)
-        acc = train_and_evaluate(model, batches[best_batch], test_data)
-        data_alice += [np.array(x[0]) for x in batches[best_batch]]
-        acc_sequence.append(acc)
-
-    fprint("SubMod Selected batch sequence:" + str(selected_batch_sequence))
-    fprint("SubMod Accuracy sequence:" + str(acc_sequence))
-
-    model.load_state_dict(current_model_dict)
-    selected_batch_sequence = []
-    acc_sequence = [accuracy_init]
-    loss = nn.CrossEntropyLoss()
-    data_alice = [np.array(x[0]) for x in train_data]
-    while len(selected_batch_sequence) < len(batches):
-        best_batch = None
-        best_score = None
-        for i in range(len(batches)):
-            if i in selected_batch_sequence:
-                continue
-            data_batch = [np.array(x[0]) for x in batches[i]]
-            label_batch = [np.eye(10)[x[1]] for x in batches[i]]
-            val = MultiRandomValuation(model, data_batch, label_batch, data_alice)
-            dv = val.data_value()
-            if best_score is None or dv > best_score:
-                best_score = dv
-                best_batch = i
-        selected_batch_sequence.append(best_batch)
-        acc = train_and_evaluate(model, batches[best_batch], test_data)
-        data_alice += [np.array(x[0]) for x in batches[best_batch]]
-        acc_sequence.append(acc)
-
-    fprint("Random Selected batch sequence:" + str(selected_batch_sequence))
-    fprint("Random Accuracy sequence:" + str(acc_sequence))
-
-
-    model.load_state_dict(current_model_dict)
-    selected_batch_sequence = []
-    acc_sequence = [accuracy_init]
-    loss = nn.CrossEntropyLoss()
-    data_alice = [np.array(x[0]) for x in train_data]
-    while len(selected_batch_sequence) < len(batches):
-        best_batch = None
-        best_score = None
-        for i in range(len(batches)):
-            if i in selected_batch_sequence:
-                continue
-            data_batch = [np.array(x[0]) for x in batches[i]]
-            label_batch = [np.eye(10)[x[1]] for x in batches[i]]
-            val = MultiEntropyValuation(model, data_batch, label_batch, data_alice,10)
-            dv = val.data_value()
-            if best_score is None or dv > best_score:
-                best_score = dv
-                best_batch = i
-        selected_batch_sequence.append(best_batch)
-        acc = train_and_evaluate(model, batches[best_batch], test_data)
-        data_alice += [np.array(x[0]) for x in batches[best_batch]]
-        acc_sequence.append(acc)
-
-    fprint("Entropy Selected batch sequence:" + str(selected_batch_sequence))
-    fprint("Entropy Accuracy sequence:" + str(acc_sequence))
-
-
-    model.load_state_dict(current_model_dict)
-    selected_batch_sequence = []
-    acc_sequence = [accuracy_init]
-    loss = nn.CrossEntropyLoss()
-    data_alice = [np.array(x[0]) for x in train_data]
-    while len(selected_batch_sequence) < len(batches):
-        best_batch = None
-        best_score = None
-        for i in range(len(batches)):
-            if i in selected_batch_sequence:
-                continue
-            data_batch = [np.array(x[0]) for x in batches[i]]
-            label_batch = [np.eye(10)[x[1]] for x in batches[i]]
-            val = MultiCoreSetValuation(model, data_batch, label_batch, data_alice,10)
-            dv = val.data_value()
-            if best_score is None or dv > best_score:
-                best_score = dv
-                best_batch = i
-        selected_batch_sequence.append(best_batch)
-        acc = train_and_evaluate(model, batches[best_batch], test_data)
-        data_alice += [np.array(x[0]) for x in batches[best_batch]]
-        acc_sequence.append(acc)
-
-    fprint("CoreSet Selected batch sequence:" + str(selected_batch_sequence))
-    fprint("CoreSet Accuracy sequence:" + str(acc_sequence))
+    # Loop over each valuation method.
+    for method_name, (ValuationClass, extra_args_fn) in valuation_methods.items():
+        run_valuation(method_name, ValuationClass, extra_args_fn)

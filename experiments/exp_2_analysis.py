@@ -2,9 +2,11 @@ import re
 import matplotlib.pyplot as plt
 
 all_acc = []
+DATASET = "cifar10"
+MODEL = "resnet18"
 for seed in range(1, 6):
     # Path to your txt file (update the path if needed)
-    filename = f'results/exp2_cifar10_resnet18_{seed}.txt'
+    filename = f'results/exp2_{DATASET}_{MODEL}_{seed}.txt'
 
     # Dictionary to store method names and their corresponding accuracy sequences
     accuracy_data = {}
@@ -38,11 +40,11 @@ for method, accuracies in all_acc[0].items():
 
 plt.xlabel('Iteration')
 plt.ylabel('Accuracy')
-plt.title('CIFAR10 Resnet18 Accuracy Curve for Different AL Methods')
+plt.title(f'{DATASET} {MODEL} Accuracy Curve for Different AL Methods')
 plt.legend()
 plt.grid(True)
 plt.tight_layout()
 
 # Save the plot as a PNG file
-plt.savefig('results/exp2_cifar10_resnet18.png', dpi=300)
+plt.savefig(f'results/exp2_{DATASET}_{MODEL}.png', dpi=300)
 plt.show()
