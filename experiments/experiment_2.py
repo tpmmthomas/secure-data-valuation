@@ -1,5 +1,5 @@
 from valuation_alg import * 
-from data import get_dataset, split_dataset, add_noise
+from data import get_dataset, split_dataset, add_noise, create_challenging_batches_with_skew
 from models import get_model
 import torch
 import torch.optim as optim
@@ -16,48 +16,60 @@ from torch.utils.data import DataLoader
 # Set desired batch size for training and evaluation.
 BATCH_SIZE = 10
 
-for seed in range(1, 6):
+for seed in range(11,16):
 
     torch.manual_seed(seed)
 
-    DATASET = "mnist"
-    MODEL = "cnn"
-    LR = 1e-4
+    DATASET = "cifar10"
+    MODEL = "resnet18"
+    NAME = "trial4"
+    LR = 1e-5
 
     def fprint(msg):
         print(msg)
-        with open(f"results/exp2_{DATASET}_{MODEL}_{seed}.txt", "a") as f:
+        with open(f"results/exp2_{DATASET}_{MODEL}_{NAME}_{seed}.txt", "a") as f:
             f.write(msg + "\n")
 
     # Create/clear the results file.
-    with open(f"results/exp2_{DATASET}_{MODEL}_{seed}.txt", "w") as f:
+    with open(f"results/exp2_{DATASET}_{MODEL}_{NAME}_{seed}.txt", "w") as f:
         pass
 
     # Load dataset and split.
     dataset = get_dataset(DATASET)
-    pretrain_size = 20
-    pool_size = 500
-    num_batch = 10
-    per_batch = 50
-    assert num_batch * per_batch == pool_size
-    test_size = 100
-    train_data, remain_data = split_dataset(dataset, pretrain_size, pool_size + test_size)
+    pretrain_size = 100
+    num_batch = 15
+    per_batch = 300
+    pool_size =  num_batch * per_batch
+    test_size = 3000
+    train_data, remain_data = split_dataset(dataset, pretrain_size,  pool_size + test_size + 10000)
+    test_data, remain_data = split_dataset(remain_data, test_size, pool_size + 10000)
     model = get_model(MODEL).cuda()
 
-    # Create 10 batches from the remaining data.
-    batches = []
-    total = pool_size + test_size
-    for _ in range(num_batch):
-        batch, remain_data = split_dataset(remain_data, per_batch, total - per_batch)
-        var = random.random() * 0.1 
-        batch = add_noise(batch, var)
-        batches.append(batch)
-        total -= per_batch
-    assert len(remain_data) == test_size
-    test_data = remain_data
+    random.shuffle(remain_data)
+    batches, _ = create_challenging_batches_with_skew(
+        dataset=remain_data,
+        num_batch=num_batch,
+        per_batch=per_batch,
+        num_classes=10,   # CIFAR-10
+        degrade_prob=0.25
+    )    
+    assert len(batches) == num_batch
+    assert len(test_data) == test_size
+
+    # # Create 10 batches from the remaining data.
+    # batches = []
+    # total = pool_size + test_size
+    # for _ in range(num_batch):
+    #     batch, remain_data = split_dataset(remain_data, per_batch, total - per_batch)
+    #     var = random.random() * 0.1
+    #     # batch = add_noise(batch, var)
+    #     batches.append(batch)
+    #     total -= per_batch
+    # assert len(remain_data) == test_size
+    # test_data = remain_data
 
     # Train the model on the initial train_data (with noise) using a DataLoader.
-    train_data = add_noise(train_data, 0.5)
+    # train_data = add_noise(train_data, 0.5)
     train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
     optimizer = optim.Adam(model.parameters(), lr=LR)
     num_epochs = 10
@@ -96,48 +108,11 @@ for seed in range(1, 6):
 
     # Save the current model state for resetting between valuation methods.
     current_model_dict = copy.deepcopy(model.state_dict())
-
-    # Define a helper function to run the valuation selection loop.
-    def run_valuation(method_name, ValuationClass, extra_args_fn):
-        # Reset the model state.
-        model.load_state_dict(current_model_dict)
-        selected_batch_sequence = []
-        acc_sequence = [accuracy_init]
-        # Define loss function locally.
-        loss_fn = nn.CrossEntropyLoss()
-        data_alice = [np.array(x[0]) for x in train_data]
-        # Start with the initial training data.
-        all_train_data_method = train_data.copy()
-        # Determine extra arguments (if any) based on the method.
-        extra_args = extra_args_fn(loss_fn)
-        while len(selected_batch_sequence) < len(batches):
-            best_batch = None
-            best_score = None
-            for i in range(len(batches)):
-                if i in selected_batch_sequence:
-                    continue
-                data_batch = [np.array(x[0]) for x in batches[i]]
-                label_batch = [np.eye(10)[x[1]] for x in batches[i]]
-                val = ValuationClass(model, data_batch, label_batch, data_alice, *extra_args)
-                dv = val.data_value()
-                if best_score is None or dv > best_score:
-                    best_score = dv
-                    best_batch = i
-            selected_batch_sequence.append(best_batch)
-            # Extend training data with the selected batch.
-            all_train_data_method = all_train_data_method + batches[best_batch]
-            # Evaluate the model on the test set.
-            acc = train_and_evaluate(model, all_train_data_method, test_data)
-            # Update data_alice with the newly added batch.
-            data_alice += [np.array(x[0]) for x in batches[best_batch]]
-            acc_sequence.append(acc)
-        fprint(f"{method_name} Selected batch sequence:" + str(selected_batch_sequence))
-        fprint(f"{method_name} Accuracy sequence:" + str(acc_sequence))
-
+    
     # The train_and_evaluate function using DataLoader.
     def train_and_evaluate(model, train_data, test_data):
         optimizer = optim.Adam(model.parameters(), lr=LR)
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.97)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.99)
         num_epochs = 10
         train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
         for epoch in range(num_epochs):
@@ -168,12 +143,54 @@ for seed in range(1, 6):
         print(f"Accuracy: {accuracy * 100:.2f}%")
         return accuracy
 
+    # Define a helper function to run the valuation selection loop.
+    def run_valuation(method_name, ValuationClass, extra_args_fn):
+        # Reset the model state.
+        model.load_state_dict(current_model_dict)
+        selected_batch_sequence = []
+        scores = []
+        acc_sequence = [accuracy_init]
+        # Define loss function locally.
+        loss_fn = nn.CrossEntropyLoss()
+        data_alice = [np.array(x[0]) for x in train_data]
+        # Start with the initial training data.
+        all_train_data_method = train_data.copy()
+        # Determine extra arguments (if any) based on the method.
+        extra_args = extra_args_fn(loss_fn)
+        while len(selected_batch_sequence) < len(batches):
+            best_batch = None
+            best_score = None
+            for i in range(len(batches)):
+                if i in selected_batch_sequence:
+                    continue
+                data_batch = [np.array(x[0]) for x in batches[i]]
+                label_batch = [np.eye(10)[x[1]] for x in batches[i]]
+                val = ValuationClass(model, data_batch, label_batch, data_alice, *extra_args)
+                dv = val.data_value()
+                if best_score is None or dv > best_score:
+                    best_score = dv
+                    best_batch = i
+            selected_batch_sequence.append(best_batch)
+            scores.append(best_score)
+            # Extend training data with the selected batch.
+            all_train_data_method = all_train_data_method + batches[best_batch]
+            # Evaluate the model on the test set.
+            acc = train_and_evaluate(model, all_train_data_method, test_data)
+            # Update data_alice with the newly added batch.
+            data_alice += [np.array(x[0]) for x in batches[best_batch]]
+            acc_sequence.append(acc)
+        fprint(f"{method_name} Selected batch sequence:" + str(selected_batch_sequence))
+        fprint(f"{method_name} Accuracy sequence:" + str(acc_sequence))
+        # fprint(f"{method_name} Scores:" + str(scores))
+
+    
+
     # Dictionary mapping method names to a tuple of (valuation class, lambda that returns extra args).
     # For methods that require a loss function, the lambda uses the local loss_fn.
     valuation_methods = {
-        "KMeans":      (MultiKMeansValuation,   lambda loss_fn: (loss_fn, 10, 0.3, 0.3, 0.4)),
-        "KMeans+Unc":  (MultiUncKMeansValuation,lambda loss_fn: (loss_fn, 10, 0.3, 0.3, 0.4)),
-        "SubMod":      (MultiSubModValuation,   lambda loss_fn: (loss_fn, 10, 0.3, 0.3, 0.4)),
+        "KMeans":      (MultiKMeansValuation,   lambda loss_fn: (loss_fn, 10, 0.5, 0.3, 0.2)),
+        "KMeans+Unc":  (MultiUncKMeansValuation,lambda loss_fn: (loss_fn, 10, 0.5, 0.3, 0.2)),
+        "SubMod":      (MultiSubModValuation,   lambda loss_fn: (loss_fn, 10, 0.5, 0.3, 0.2)),
         "Random":      (MultiRandomValuation,   lambda loss_fn: ()),
         "Entropy":     (MultiEntropyValuation,  lambda loss_fn: (10,)),
         "CoreSet":     (MultiCoreSetValuation,  lambda loss_fn: (10,))

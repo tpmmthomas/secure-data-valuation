@@ -4,9 +4,10 @@ import matplotlib.pyplot as plt
 all_acc = []
 DATASET = "cifar10"
 MODEL = "resnet18"
-for seed in range(1, 6):
+NAME = "trial4"
+for seed in range(1,6):
     # Path to your txt file (update the path if needed)
-    filename = f'results/exp2_{DATASET}_{MODEL}_{seed}.txt'
+    filename = f'results/exp2_{DATASET}_{MODEL}_{NAME}_{seed}.txt'
 
     # Dictionary to store method names and their corresponding accuracy sequences
     accuracy_data = {}
@@ -46,5 +47,5 @@ plt.grid(True)
 plt.tight_layout()
 
 # Save the plot as a PNG file
-plt.savefig(f'results/exp2_{DATASET}_{MODEL}.png', dpi=300)
+plt.savefig(f'results/exp2_{DATASET}_{MODEL}_{NAME}.png', dpi=300)
 plt.show()

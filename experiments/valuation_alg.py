@@ -106,6 +106,10 @@ class MultiKMeansValuation(MultiDataValuation):
         kmeans = KMeans(n_clusters=self.K, random_state=0).fit(self.reduced_images)
         cluster_labels = kmeans.labels_
         cluster_centers = kmeans.cluster_centers_
+        if len(cluster_centers) != self.K:
+            #Make a random selection
+            self.selected_idx = np.random.choice(len(self.data_points), self.K, replace=False)
+            return True
         #Loop through each individual cluster
         for cluster in range(self.K):
             #Retrieve indices and images of the cluster
@@ -139,12 +143,21 @@ class MultiKMeansValuation(MultiDataValuation):
 
         # Compute diversity score
         diversity_score = 0
-        for point in chosen_reduced_points:
+        for i in range(len(chosen_reduced_points)):
+            point = chosen_reduced_points[i]
+            if not isinstance(point, torch.Tensor):
+                point = torch.tensor(point)
             #Compute the min. distance of point to any of self.trained_clusters
             min_distance = torch.min(torch.linalg.norm(point - self.trained_clusters, dim=1)).item()
             diversity_score += min_distance
+            dist_self = torch.linalg.norm(point - chosen_reduced_points, dim=1)
+            dist_self[i] = float('inf')
+            min_dist_self = torch.min(dist_self).item()
+            diversity_score += min_dist_self
         diversity_score /= len(chosen_reduced_points)
         diversity_score /= self.avg_l2norm #Normalization
+        diversity_score /= 2
+        
         total_score = self.a1 * loss_score + self.a2 * uncertainty_score + self.a3 *  diversity_score
         self.value = total_score
         return self.value
@@ -187,6 +200,11 @@ class MultiUncKMeansValuation(MultiDataValuation):
         kmeans = KMeans(n_clusters=self.K, random_state=0).fit(self.reduced_images)
         cluster_labels = kmeans.labels_
         #Loop through each individual cluster
+        cluster_centers = kmeans.cluster_centers_
+        if len(cluster_centers) != self.K:
+            #Make a random selection
+            self.selected_idx = np.random.choice(len(self.data_points), self.K, replace=False)
+            return True
         for cluster in range(self.K):
             #Retrieve indices and images of the cluster
             cluster_indices = np.where(cluster_labels == cluster)[0]
@@ -194,7 +212,8 @@ class MultiUncKMeansValuation(MultiDataValuation):
             #Compute an uncertainty score
             self.model.eval()
             with torch.no_grad():
-                outputs = self.model(self.data_points[cluster_indices]).cpu()
+                outputs = self.model(self.data_points[cluster_indices])
+                outputs = nn.Softmax(dim=1)(outputs).cpu()
                 unc_scores = (-torch.sum(outputs * torch.log(outputs + 1e-9), dim=1)).numpy()
 
             sorted_indices = np.argsort(unc_scores)
@@ -223,12 +242,20 @@ class MultiUncKMeansValuation(MultiDataValuation):
 
         # Compute diversity score
         diversity_score = 0
-        for point in chosen_reduced_points:
+        for i in range(len(chosen_reduced_points)):
+            point = chosen_reduced_points[i]
+            if not isinstance(point, torch.Tensor):
+                point = torch.tensor(point)
             #Compute the min. distance of point to any of self.trained_clusters
-            min_distance = torch.min(torch.linalg.norm(torch.tensor(point) - self.trained_clusters, dim=1)).item()
+            min_distance = torch.min(torch.linalg.norm(point - self.trained_clusters, dim=1)).item()
             diversity_score += min_distance
+            dist_self = torch.linalg.norm(point - chosen_reduced_points, dim=1)
+            dist_self[i] = float('inf')
+            min_dist_self = torch.min(dist_self).item()
+            diversity_score += min_dist_self
         diversity_score /= len(chosen_reduced_points)
         diversity_score /= self.avg_l2norm #Normalization
+        diversity_score /= 2
 
         total_score = self.a1 * loss_score + self.a2 * uncertainty_score + self.a3 *  diversity_score
         self.value = total_score
@@ -311,12 +338,20 @@ class MultiSubModValuation(MultiDataValuation):
 
         # Compute diversity score
         diversity_score = 0
-        for point in chosen_reduced_points:
+        for i in range(len(chosen_reduced_points)):
+            point = chosen_reduced_points[i]
+            if not isinstance(point, torch.Tensor):
+                point = torch.tensor(point)
             #Compute the min. distance of point to any of self.trained_clusters
-            min_distance = torch.min(torch.linalg.norm(torch.tensor(point) - self.trained_clusters, dim=1)).item()
+            min_distance = torch.min(torch.linalg.norm(point - self.trained_clusters, dim=1)).item()
             diversity_score += min_distance
+            dist_self = torch.linalg.norm(point - chosen_reduced_points, dim=1)
+            dist_self[i] = float('inf')
+            min_dist_self = torch.min(dist_self).item()
+            diversity_score += min_dist_self
         diversity_score /= len(chosen_reduced_points)
         diversity_score /= self.avg_l2norm #Normalization
+        diversity_score /= 2
 
         total_score = self.a1 * loss_score + self.a2 * uncertainty_score + self.a3 *  diversity_score
         self.value = total_score
@@ -360,6 +395,11 @@ class MultiEntropyValuation(MultiDataValuation):
         cluster_labels = kmeans.labels_
         cluster_centers = kmeans.cluster_centers_
         #Loop through each individual cluster
+        cluster_centers = kmeans.cluster_centers_
+        if len(cluster_centers) != self.K:
+            #Make a random selection
+            self.selected_idx = np.random.choice(len(self.data_points), self.K, replace=False)
+            return True
         for cluster in range(self.K):
             #Retrieve indices and images of the cluster
             cluster_indices = np.where(cluster_labels == cluster)[0]
