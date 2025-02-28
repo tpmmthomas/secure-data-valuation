@@ -261,7 +261,7 @@ def create_challenging_batches_with_skew(
         random.shuffle(class_to_data[lbl])
     
     # Decide how many balanced vs skewed
-    num_balanced = int(num_batch * 0.4)  # 40%
+    num_balanced = int(num_batch * 0.3)  
     num_skewed = num_batch - num_balanced
     
     batches = []

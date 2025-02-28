@@ -16,13 +16,14 @@ from torch.utils.data import DataLoader
 # Set desired batch size for training and evaluation.
 BATCH_SIZE = 10
 
-for seed in range(11,16):
+for seed in range(21,26):
 
+    random.seed(seed)
     torch.manual_seed(seed)
 
     DATASET = "cifar10"
     MODEL = "resnet18"
-    NAME = "trial4"
+    NAME = "formal1"
     LR = 1e-5
 
     def fprint(msg):
@@ -50,8 +51,8 @@ for seed in range(11,16):
         dataset=remain_data,
         num_batch=num_batch,
         per_batch=per_batch,
-        num_classes=10,   # CIFAR-10
-        degrade_prob=0.25
+        num_classes=10,   # CIFAR-10 OR MNIST
+        degrade_prob=0.6
     )    
     assert len(batches) == num_batch
     assert len(test_data) == test_size
@@ -188,12 +189,10 @@ for seed in range(11,16):
     # Dictionary mapping method names to a tuple of (valuation class, lambda that returns extra args).
     # For methods that require a loss function, the lambda uses the local loss_fn.
     valuation_methods = {
-        "KMeans":      (MultiKMeansValuation,   lambda loss_fn: (loss_fn, 10, 0.5, 0.3, 0.2)),
-        "KMeans+Unc":  (MultiUncKMeansValuation,lambda loss_fn: (loss_fn, 10, 0.5, 0.3, 0.2)),
-        "SubMod":      (MultiSubModValuation,   lambda loss_fn: (loss_fn, 10, 0.5, 0.3, 0.2)),
         "Random":      (MultiRandomValuation,   lambda loss_fn: ()),
         "Entropy":     (MultiEntropyValuation,  lambda loss_fn: (10,)),
-        "CoreSet":     (MultiCoreSetValuation,  lambda loss_fn: (10,))
+        "CoreSet":     (MultiCoreSetValuation,  lambda loss_fn: (10,)),
+        "Ours":       (MultiMMSSValuation,     lambda loss_fn: (loss_fn,10, 0.2,0.1,0.7)),
     }
 
     # Loop over each valuation method.

@@ -342,9 +342,10 @@ class MultiSubModValuation(MultiDataValuation):
             point = chosen_reduced_points[i]
             if not isinstance(point, torch.Tensor):
                 point = torch.tensor(point)
-            #Compute the min. distance of point to any of self.trained_clusters
+            #Compute the min. distance of point to any of Alice's cluster
             min_distance = torch.min(torch.linalg.norm(point - self.trained_clusters, dim=1)).item()
             diversity_score += min_distance
+            #Compute the min. distance of point to any of the other selected points
             dist_self = torch.linalg.norm(point - chosen_reduced_points, dim=1)
             dist_self[i] = float('inf')
             min_dist_self = torch.min(dist_self).item()
@@ -500,3 +501,104 @@ class MultiCoreSetValuation(MultiDataValuation):
             self.already_selected.append(ind)
             new_batch.append(ind)
         return max(self.min_distances)[0]
+    
+    
+class MultiMMSSValuation(MultiDataValuation):
+    def __init__(self, model: nn.Module, data_points, labels, trainer_data, loss_fn, cluster_size, a1,a2,a3):
+        super().__init__(model, data_points, labels, trainer_data)
+        self.loss_fn = loss_fn
+        self.value = None
+        self.K = cluster_size
+        self.value = None
+        self.min_distances = None
+        self.already_selected = []
+        self.n_obs = self.data_points.shape[0]
+        self.a1 = a1
+        self.a2 = a2
+        self.a3 = a3
+        assert a1+a2+a3 == 1, "a1 + a2 + a3 must equal 1"
+        self.dim_reduction()
+
+    def dim_reduction(self):
+        #Reduce dimension by random projection
+        flattened_images = self.data_points.reshape(self.data_points.shape[0], -1)
+        flattened_trainerData = self.trainer_data.reshape(self.trainer_data.shape[0], -1)
+        transformer = SparseRandomProjection(n_components='auto', eps=0.5, random_state=0)
+        self.reduced_images = transformer.fit_transform(flattened_images.cpu())
+        self.reduced_trainerData = transformer.transform(flattened_trainerData.cpu())
+        self.all_features = self.reduced_images
+        self.already_selected = []
+        return True
+    
+    def update_distances(self, cluster_centers, only_new=True, reset_dist=False):
+        """Update min distances given cluster centers.
+
+        Args:
+        cluster_centers: indices of cluster centers
+        only_new: only calculate distance for newly selected points and update
+            min_distances.
+        rest_dist: whether to reset min_distances.
+        """
+
+        if reset_dist:
+            self.min_distances = None
+        if only_new:
+            cluster_centers = [d for d in cluster_centers
+                                if d not in self.already_selected]
+        if cluster_centers:
+            # Update min_distances for all examples given new cluster center.
+            x = self.all_features[cluster_centers]
+            dist = pairwise_distances(self.all_features, x, metric='euclidean')
+
+            if self.min_distances is None:
+                self.min_distances = np.min(dist, axis=1).reshape(-1,1)
+            else:
+                self.min_distances = np.minimum(self.min_distances, dist)
+
+    def select_data(self):
+        self.update_distances(self.already_selected, only_new=False, reset_dist=False)
+        new_batch = []
+
+        for _ in range(self.K):
+            if self.already_selected is None:
+                # Initialize centers with a randomly selected datapoint
+                ind = np.random.choice(np.arange(self.n_obs))
+            else:
+                ind = np.argmax(self.min_distances)
+        # New examples should not be in already selected since those points
+        # should have min_distance of zero to a cluster center.
+            self.update_distances([ind], only_new=True, reset_dist=False)
+            self.already_selected.append(ind)
+            new_batch.append(ind)
+        self.selected_idx = self.already_selected
+        #Set this as diversity score
+        self.diversity_score = max(self.min_distances)[0]
+        assert len(self.selected_idx) == self.K, "Number of selected indices must equal K"
+        return True
+
+    def data_value(self):
+        self.select_data()
+        total_score = 0
+        chosen_points = self.data_points[self.selected_idx]
+        chosen_reduced_points = self.reduced_images[self.selected_idx]
+        chosen_labels = self.labels[self.selected_idx]
+        self.avg_l2norm = torch.linalg.norm(torch.tensor(chosen_reduced_points), dim=1).mean().item()
+        #Uncertainty score, Diversity score and Loss score
+        # Compute loss score
+        self.model.eval()
+        with torch.no_grad():
+            outputs = self.model(chosen_points)
+            loss = self.loss_fn(outputs, chosen_labels)
+            loss_score = loss.item()
+
+        # Compute uncertainty score
+        outputs = nn.Softmax(dim=1)(outputs)
+        uncertainty_score = -torch.sum(outputs * torch.log(outputs + 1e-9), dim=1).mean().item()
+
+        # Compute diversity score
+        diversity_score = self.diversity_score
+        diversity_score /= self.avg_l2norm
+        
+        total_score = self.a1 * loss_score + self.a2 * uncertainty_score + self.a3 *  diversity_score
+        self.value = total_score
+        return self.value

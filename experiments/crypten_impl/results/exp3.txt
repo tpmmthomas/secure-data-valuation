@@ -1,0 +1,4 @@
+Model TwoLayerCNN executed 5 times in 1.298 seconds
+Model SixLayerCNN executed 5 times in 4.805 seconds
+Model MobileNetV2 executed 5 times in 13.330 seconds
+Model ResNet18 executed 5 times in 5.782 seconds

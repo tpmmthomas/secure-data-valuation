@@ -37,6 +37,7 @@ import argparse
 import logging
 import os
 import time
+import importlib
 import psutil
 
 from multiprocess_launcher import (
@@ -55,38 +56,48 @@ parser.add_argument(
     "--seed", default=None, type=int, help="seed for initializing training. "
 )
 parser.add_argument(
-    "--multiprocess",
-    default=False,
-    action="store_true",
-    help="Run example in multiprocess mode",
+    "--model_name",
+    type=str,
+    default="Model",
+    help="Specifies the model name",
 )
 
 def _run_experiment(args):
-    # only import here to initialize crypten within the subprocesses
-    # pyre-fixme[21]: Could not find module `mpc_cifar`.
-    from mpc_single import run_data_valuation  # @manual
+        # only import here to initialize crypten within the subprocesses
+        # pyre-fixme[21]: Could not find module `mpc_cifar`.
+        from mpc_single import run_data_valuation  # @manual
 
-    # Only Rank 0 will display logs.
-    level = logging.INFO
-    if "RANK" in os.environ and os.environ["RANK"] != "0":
-        level = logging.CRITICAL
-    logging.getLogger().setLevel(level)
-    run_data_valuation(
-        args.seed,
-    )
+        # Only Rank 0 will display logs.
+        level = logging.INFO
+        if "RANK" in os.environ and os.environ["RANK"] != "0":
+            level = logging.CRITICAL
+        logging.getLogger().setLevel(level)
+        run_data_valuation(
+            args.seed, args.model_name
+        )
 
-
-def main(run_experiment):
-    args = parser.parse_args()
-    if args.multiprocess:
-        launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
-        launcher.start()
-        launcher.join()
-        launcher.terminate()
-    else:
-        run_experiment(args)
+def run_experiment(args=None):
+    if args is None:
+        args = parser.parse_args()
+    launcher = MultiProcessLauncher(2, _run_experiment,args)
+    launcher.start()
+    launcher.join()
+    launcher.terminate()
+    
+if __name__ == "__main__":
+    run_experiment()
+        
+# def main(run_experiment):
+#     args = parser.parse_args()
+#     if args.multiprocess:
+#         launcher = MultiProcessLauncher(args.world_size, run_experiment, args)
+#         launcher.start()
+#         launcher.join()
+#         launcher.terminate()
+#     else:
+#         run_experiment(args)
         
 
 
-if __name__ == "__main__":
-    main(_run_experiment)
+# if __name__ == "__main__":
+#     main(_run_experiment)

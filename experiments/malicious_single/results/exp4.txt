@@ -1,0 +1,1 @@
+Model SixLayerCNN executed 5 times, average time 188.613 seconds with average memory usage 98844645.6 kB and average precision diff 0.000%, avg comm overhead 158.570 MB
