@@ -1,4 +1,4 @@
-Model TwoLayerCNN executed 5 times, average time 1.272 seconds with average memory usage 238099.2 kB and average precision diff 0.483%
-Model SixLayerCNN executed 5 times, average time 5.116 seconds with average memory usage 273495.2 kB and average precision diff 0.554%
-Model MobileNetV2 executed 5 times, average time 13.783 seconds with average memory usage 330097.6 kB and average precision diff 0.496%
-Model ResNet18 executed 5 times, average time 5.849 seconds with average memory usage 546940.8 kB and average precision diff 0.361%
+Model TwoLayerCNN executed 5 times, average time 1.321 seconds with average memory usage 239415.2 kB and average precision diff 0.399%, average communication 13440056.000 Bytes
+Model SixLayerCNN executed 5 times, average time 2.105 seconds with average memory usage 241642.4 kB and average precision diff 0.465%, average communication 71220280.000 Bytes
+Model MobileNetV2 executed 5 times, average time 14.627 seconds with average memory usage 333424.0 kB and average precision diff 0.444%, average communication 153131416.000 Bytes
+Model ResNet18 executed 5 times, average time 12.857 seconds with average memory usage 560719.2 kB and average precision diff 0.480%, average communication 447802264.000 Bytes

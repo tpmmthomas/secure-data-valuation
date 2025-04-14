@@ -59,6 +59,8 @@ def run_data_valuation(
     
     print("Output: %s" % output.get_plain_text())
     print("Loss value: %s" % loss_value.get_plain_text())
+    rank = comm.get().get_rank()
+    print(f"Rank: {rank} Communication {comm.get().get_communication_stats()}" )
     
     #Output to a file
     # rank = comm.get().get_rank()

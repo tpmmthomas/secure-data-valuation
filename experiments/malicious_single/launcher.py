@@ -6,6 +6,7 @@ import os
 import json
 import importlib
 import argparse
+import time
 
 #Specifying some path parameters
 model_path = os.path.join('data','network.onnx')
@@ -39,6 +40,7 @@ parser.add_argument(
 
 async def run_experiment():
     #Simulate ZKP component
+    start = time.time()
     res = await ezkl.gen_witness(data_path, compiled_model_path, witness_path) #Put this later
     res = ezkl.prove(
         witness_path,
@@ -47,12 +49,17 @@ async def run_experiment():
         proof_path,
         "single",
     )
+    end = time.time()
+    print(f"ZKP Proof Time: {end-start}")
+    start = time.time()
     res = ezkl.verify(
         proof_path,
         settings_path,
         vk_path,
     )
     os.system("cd ../../MP-SPDZ/ && Scripts/spdz2k.sh dataval_ce")
+    end = time.time()
+    print(f"ZKP Online Time: {end-start}")
     
 
 import asyncio

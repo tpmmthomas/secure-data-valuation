@@ -1,0 +1,13 @@
+Using SPDZ2k security parameter 64
+Using statistical security parameter 40
+Trying to run 64-bit computation
+Cross Entropy loss: 2.29556
+The following benchmarks are including preprocessing (offline phase).
+Time = 0.628862 seconds 
+Data sent = 78.6999 MB in ~699 rounds (party 0 only; use '-v' for more details)
+Global data sent = 157.4 MB (all parties)
+This program might benefit from some protocol options.
+Consider adding the following at the beginning of your code:
+	program.use_edabit(True)
+ZKP Proof Time: 189.74854111671448
+ZKP Online Time: 7.9586498737335205

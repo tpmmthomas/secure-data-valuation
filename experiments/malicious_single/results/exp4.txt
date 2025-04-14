@@ -1,1 +1,3 @@
-Model SixLayerCNN executed 5 times, average time 188.613 seconds with average memory usage 98844645.6 kB and average precision diff 0.000%, avg comm overhead 158.570 MB
+Model TwoLayerCNN executed 5 times, average time 20.355 seconds with average memory usage 12825428.0 kB and average precision diff 0.002%, avg comm overhead 157.915 MB
+Model SixLayerCNN executed 5 times, average time 199.220 seconds with average memory usage 99282240.0 kB and average precision diff 0.003%, avg comm overhead 158.571 MB
+Model MobileNetV2 executed 5 times, average time 201.952 seconds with average memory usage 88722388.0 kB and average precision diff 0.002%, avg comm overhead 158.518 MB

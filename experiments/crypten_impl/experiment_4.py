@@ -25,6 +25,7 @@ for model_name in models:
     total_times = []
     total_memory = []
     total_precision = []
+    total_comm = []
     for i in range(5):
         # Create the model and save it in the data directory.
         model_module = importlib.import_module("model")
@@ -54,6 +55,7 @@ for model_name in models:
         elapsed = time.time() - start
         total_times.append(elapsed)
 
+
         # Parse the memory usage from result.stderr.
         # Look for a line like: "Maximum resident set size (kbytes): 12345"
         mem_usage = None
@@ -73,28 +75,36 @@ for model_name in models:
         # Calculate precision
         # with open("results/data_valuation.txt", "r") as f:
         #     secure_loss_value = float(f.read())
+        secure_loss_value = None
         for line in result.stdout.splitlines():
             if "Loss value" in line:
                 secure_loss_value = line.split(":")[-1].strip()
                 match = re.search(r"tensor\((.*?)\)", secure_loss_value)
                 if match:
                     secure_loss_value = float(match.group(1)) * 10 
-                break
+            if "Communication" in line:
+                comm = float(line.split(' ')[6][:-1])
+        if not secure_loss_value:
+            for line in result.stderr.splitlines():
+                print(line)
         # print(secure_loss_value, loss_value)
         diff = secure_loss_value - loss_value
         percentage_diff = (diff / loss_value) * 100
         total_precision.append(percentage_diff)
+        total_comm.append(comm)
     
     avg_time = sum(total_times) / len(total_times)
     avg_memory = sum(total_memory) / len(total_memory) if total_memory else 0
     avg_precision = sum(total_precision) / len(total_precision)
+    avg_comm = sum(total_comm) / len(total_comm)
     # avg_precision = 0
-    fprint(f"Model {model_name} executed 5 times, average time {avg_time:.3f} seconds with average memory usage {avg_memory:.1f} kB and average precision diff {avg_precision:.3f}%")
+    fprint(f"Model {model_name} executed 5 times, average time {avg_time:.3f} seconds with average memory usage {avg_memory:.1f} kB and average precision diff {avg_precision:.3f}%, average communication {avg_comm:.3f} Bytes")
     #Export all time, memory and precision to csv
     results_file = f"results/exp4_{model_name}.txt"
     fprint(f"times: {total_times}", results_file)
     fprint(f"memory: {total_memory}", results_file)
     fprint(f"precision: {total_precision}", results_file)
+    fprint(f"comm: {total_comm}", results_file)
     # row = {"Model": model_name, "Avg_Time": avg_time, "Avg_Memory": avg_memory, "Avg_Precision": avg_precision}
     # df_row = pd.DataFrame([row])
     # if not os.path.exists(results_file):

@@ -31,7 +31,7 @@ label_path = os.path.join('data','label.json')
 proof_path = os.path.join('data','test.pf')
 
 # List of models to benchmark.
-models = ['SixLayerCNN'] # 
+models = ['TwoLayerCNN', 'SixLayerCNN', "MobileNetV2"] # 
 
 with open("results/exp4.txt", "w") as f:
         pass
@@ -86,21 +86,21 @@ async def main():
         py_run_args.input_visibility = "public" #Bob can see this
         py_run_args.output_visibility = "hashed/public" #This hash is given to Bob
         py_run_args.param_visibility = "private" 
-        # print("Generating settings")
-        # res = ezkl.gen_settings(model_path, settings_path, py_run_args=py_run_args)
-        # assert res
-        # # await ezkl.calibrate_settings(cal_path, model_path, settings_path, "resources")
-        # print("Compiling circuit")
-        # res = ezkl.compile_circuit(model_path, compiled_model_path, settings_path)
-        # assert res
+        print("Generating settings")
+        res = ezkl.gen_settings(model_path, settings_path, py_run_args=py_run_args)
+        assert res
+        # await ezkl.calibrate_settings(cal_path, model_path, settings_path, "resources")
+        print("Compiling circuit")
+        res = ezkl.compile_circuit(model_path, compiled_model_path, settings_path)
+        assert res
         # print("Generating srs")
         # res = await ezkl.get_srs(settings_path)
-        # print("Setup here")
-        # res = ezkl.setup(
-        #     compiled_model_path,
-        #     vk_path,
-        #     pk_path,
-        # )
+        print("Setup here")
+        res = ezkl.setup(
+            compiled_model_path,
+            vk_path,
+            pk_path,
+        )
         data_array = ((data).detach().numpy()).reshape([-1]).tolist()
         data = dict(input_data = [data_array])
             # Serialize data into file:
@@ -130,7 +130,7 @@ async def main():
                 f.write(f'{i:.6f} ')
             f.write('\n')
         #Repeat experiment 5 times
-        for i in range(5):
+        for i in range(1):
             print("Running experiment", i)
             data = torch.load("data/data.pth")
             label = torch.load("data/lbl.pth")
@@ -153,6 +153,8 @@ async def main():
             )
             elapsed = time.time() - start
             total_times.append(elapsed)
+            for line in result.stdout.splitlines():
+                fprint(line,f'results/online_offline_{model_name}.txt')
         #     # Parse the memory usage from result.stderr.
         #     # Look for a line like: "Maximum resident set size (kbytes): 12345"
             mem_usage = None

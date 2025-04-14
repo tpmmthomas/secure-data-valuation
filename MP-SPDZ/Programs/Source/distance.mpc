@@ -1,0 +1,31 @@
+# Parameters
+from Compiler import mpc_math
+
+n = 10000
+
+a = Array(n, sfix)
+b = Array(n, sfix)
+
+@for_range_opt(n)
+def _(i):
+    a[i] = sfix.get_input_from(0)
+
+@for_range_opt(n)
+def _(i):
+    b[i] = sfix.get_input_from(1)
+
+# Compute squared differences
+temp_array = Array(n, sfix)
+
+@for_range_opt(n)
+def _(i):
+    temp_array[i] = (a[i] - b[i]) * (a[i] - b[i])
+
+# Calculate sum of squared differences
+total_sum = sum(x for x in temp_array)
+
+# Calculate final Euclidean distance
+dist = mpc_math.sqrt(total_sum)
+
+# Print the result (use dist, not result)
+print_ln('Euclidean distance: %s', dist.reveal())
