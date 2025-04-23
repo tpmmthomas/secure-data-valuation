@@ -44,3 +44,5 @@ ezkl
 **/target
 **/dataZKP
 **/build
+**/circom
+*.ptau
