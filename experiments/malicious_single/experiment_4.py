@@ -15,7 +15,7 @@ import random
 import numpy as np
 import torchvision.transforms as transforms
 from launcher import run_experiment
-
+import asyncio
 
 #Specifying some path parameters
 model_path = os.path.join('data','network.onnx')
@@ -31,7 +31,7 @@ label_path = os.path.join('data','label.json')
 proof_path = os.path.join('data','test.pf')
 
 # List of models to benchmark.
-models = ['TwoLayerCNN', 'SixLayerCNN', "MobileNetV2"] # 
+models = ['ResNet18'] #'SVM', 'LeNet', 'AlexNet',
 
 with open("results/exp4.txt", "w") as f:
         pass
@@ -85,7 +85,8 @@ async def main():
         py_run_args = ezkl.PyRunArgs()
         py_run_args.input_visibility = "public" #Bob can see this
         py_run_args.output_visibility = "hashed/public" #This hash is given to Bob
-        py_run_args.param_visibility = "private" 
+        py_run_args.param_visibility = "private"
+        py_run_args.logrows = 12 #log rows = 14 used to work for ResNet18
         print("Generating settings")
         res = ezkl.gen_settings(model_path, settings_path, py_run_args=py_run_args)
         assert res
@@ -93,8 +94,8 @@ async def main():
         print("Compiling circuit")
         res = ezkl.compile_circuit(model_path, compiled_model_path, settings_path)
         assert res
-        # print("Generating srs")
-        # res = await ezkl.get_srs(settings_path)
+        print("Generating srs")
+        res = await ezkl.get_srs(settings_path)
         print("Setup here")
         res = ezkl.setup(
             compiled_model_path,
@@ -130,7 +131,7 @@ async def main():
                 f.write(f'{i:.6f} ')
             f.write('\n')
         #Repeat experiment 5 times
-        for i in range(1):
+        for i in range(5):
             print("Running experiment", i)
             data = torch.load("data/data.pth")
             label = torch.load("data/lbl.pth")
@@ -179,6 +180,8 @@ async def main():
                 if "global data" in line.lower():
                     data_sent = line.split(" ")[4].strip()
                     data_sent = float(data_sent)
+                    data_file_size = os.path.getsize("data/data.pth") / (1024 * 1024)
+                    data_sent += data_file_size
             
             # print(secure_loss_value, loss_value)
             diff = secure_loss_value - loss_value
@@ -202,5 +205,5 @@ async def main():
         fprint(f"precision: {total_precision}", results_file)
         fprint(f"comm: {total_comm}", results_file)
 
-import asyncio
+
 asyncio.run(main())

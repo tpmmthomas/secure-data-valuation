@@ -6,6 +6,7 @@ import os
 import json
 import importlib
 import argparse
+import time
 
 #Specifying some path parameters
 model_path = os.path.join('data','network.onnx')
@@ -20,25 +21,13 @@ output_path = os.path.join('data','output.json')
 label_path = os.path.join('data','label.json')
 proof_path = os.path.join('data','test.pf')
 
-parser = argparse.ArgumentParser(description="CrypTen Cifar Training")
-parser.add_argument(
-    "--world_size",
-    type=int,
-    default=2,
-    help="The number of parties to launch. Each party acts as its own process",
-)
-parser.add_argument(
-    "--seed", default=None, type=int, help="seed for initializing training. "
-)
-parser.add_argument(
-    "--model_name",
-    type=str,
-    default="Model",
-    help="Specifies the model name",
-)
 
 async def run_experiment():
+    #Simulate Bob loading data
+    
+    
     #Simulate ZKP component
+    start = time.time()
     res = await ezkl.gen_witness(data_path, compiled_model_path, witness_path) #Put this later
     res = ezkl.prove(
         witness_path,
@@ -47,12 +36,17 @@ async def run_experiment():
         proof_path,
         "single",
     )
+    end = time.time()
+    print(f"ZKP Proof Time: {end-start}")
+    start = time.time()
     res = ezkl.verify(
         proof_path,
         settings_path,
         vk_path,
     )
     os.system("cd ../../MP-SPDZ/ && Scripts/spdz2k.sh dataval_ce")
+    end = time.time()
+    print(f"ZKP Online Time: {end-start}")
     
 
 import asyncio

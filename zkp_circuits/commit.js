@@ -2,6 +2,9 @@
 const fs = require("fs");
 const circomlibjs = require("circomlibjs");
 
+const FRACTIONAL_BITS = 16;
+const SCALE = 1 << FRACTIONAL_BITS; 
+
 // helper: decompose a 32‑bit integer into a little‑endian bit array
 function toBitsLE(x, n) {
   const bits = [];
@@ -32,14 +35,36 @@ async function main() {
   const F        = babyJub.F;
 
   // 2) Your message and randomness (32‑bit each)
-  const messageArray = [
-    1,1,1,1,1,1,1,1,1,1
-  ]; // example values
-  const n = messageArray.length;
-  const r = 0x12345678;
+  const inputData = JSON.parse(fs.readFileSync("input.json", "utf-8"));
+    const messageArray = inputData.messageArray;
+    const r = inputData.r;
+    const d = inputData.d;
+    const idx = inputData.idx;
+    const allPoints = inputData.allPoints;
+
+//   const messageArray = [
+//     1,1,1,1,1,1,1,1,1,1
+//   ]; // example values
+//   const n = messageArray.length;
+//   const r = 0x12345678;
+//   const d = 0.35;
+//   const idx = 0;
+
+//   const allPoints = [
+//     Array(10).fill(1.1),
+//     Array(10).fill(2.0),
+//     Array(10).fill(3.0),
+//     Array(10).fill(4.0),
+//     Array(10).fill(5.0)
+//   ]
+
+  // Scaling 
+  const scaledMsg = messageArray.map(x => Math.round(x * SCALE));
+  const scaledPts = allPoints.map(arr => arr.map(x => Math.round(x * SCALE)));
+  const scaledD = Math.round(d * SCALE);
 
   // 3) Bit‑decompose into little‑endian arrays
-  const msgBits  = messageArray.map(x => toBitsLE(x, 32));
+  const msgBits  = scaledMsg.map(x => toBitsLE(x, 32));
   const randBits = toBitsLE(r,  32);
   const allBits  = msgBits.flat().concat(randBits);
 
@@ -64,15 +89,9 @@ const input = {
     commitY: commitY.toString(),
     arrBits: msgBits,
     randBits: randBits,
-    points: [
-        Array(10).fill("1"),
-        Array(10).fill("2"),
-        Array(10).fill("3"),
-        Array(10).fill("4"),
-        Array(10).fill("5")
-    ],
-    d: 1,
-    idx: 0
+    points: scaledPts,
+    d: scaledD,
+    idx: idx,
 };
   fs.writeFileSync("input.json", JSON.stringify(input, null, 2));
 }
