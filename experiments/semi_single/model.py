@@ -75,6 +75,15 @@ class AlexNet(nn.Module):
         x = self.classifier(x)
         return x
 
+class MobileNetV2(nn.Module):
+     def __init__(self):
+         super(MobileNetV2, self).__init__()
+         self.model = models.mobilenet_v2(pretrained=False)
+         # Adjust the classifier for 10 classes
+         self.model.classifier[1] = nn.Linear(self.model.last_channel, 10)
+ 
+     def forward(self, x):
+         return self.model(x)
 
 class BasicBlock(nn.Module):
     expansion = 1

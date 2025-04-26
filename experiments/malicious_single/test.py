@@ -28,7 +28,7 @@ label_path = os.path.join('data','label.json')
 proof_path = os.path.join('data','test.pf')
 
 # List of models to benchmark.
-models = ["ResNet18"] # 
+models = ["MobileNetV2"] # 
 
 with open("results/exp4.txt", "w") as f:
         pass
@@ -83,11 +83,14 @@ async def main():
         py_run_args.input_visibility = "public" #Bob can see this
         py_run_args.output_visibility = "hashed/public" #This hash is given to Bob
         py_run_args.param_visibility = "private" 
-        py_run_args.logrows = 14
+        py_run_args.logrows = 20
         print("Generating settings")
         res = ezkl.gen_settings(model_path, settings_path, py_run_args=py_run_args)
         assert res
         # await ezkl.calibrate_settings(cal_path, model_path, settings_path, "resources")
+        settings = json.load(open(settings_path, 'r'))
+        settings['run_args']['logrows'] = py_run_args.logrows
+        json.dump(settings, open(settings_path, 'w' ))
         print("Compiling circuit")
         res = ezkl.compile_circuit(model_path, compiled_model_path, settings_path)
         assert res

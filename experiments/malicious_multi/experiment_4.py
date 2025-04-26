@@ -15,7 +15,7 @@ import random
 import numpy as np
 import torchvision.transforms as transforms
 from launcher import run_experiment
-
+import asyncio
 
 #Specifying some path parameters
 model_path = os.path.join('data','network.onnx')
@@ -31,7 +31,7 @@ label_path = os.path.join('data','label.json')
 proof_path = os.path.join('data','test.pf')
 
 # List of models to benchmark.
-models = ['SixLayerCNN','MobileNetV2', 'ResNet18'] # 
+models = ['SVM', 'LeNet','MobileNetV2'] #'SVM', 'LeNet', 'AlexNet',
 
 with open("results/exp4.txt", "w") as f:
         pass
@@ -48,16 +48,33 @@ transform = transforms.Compose(
     [transforms.ToTensor(),
      transforms.Normalize((0.5, 0.5, 0.5), (0.5, 0.5, 0.5))])
 
+N = 1000 #Bob's dataset size
+DIM = 50 # Dimension of the reduced dataset
+K = 20 # Representative set size
+M = 20 # Number of CP checks by Alice
 
-trainset = torchvision.datasets.CIFAR10(root='./data', train=False,download=True,transform=transform)
-indices = random.sample(range(len(trainset)), 3)
-cal_images = np.array([trainset[i][0].numpy() for i in indices])
-data_array = (cal_images).reshape([-1]).tolist()
+transform = transforms.Compose(
+    [transforms.ToTensor()])
 
-data = dict(input_data = [data_array])
+trainset = torchvision.datasets.CIFAR10(root='./data', train=False,transform=transform,download=True)
+# Randomly select 1000 images as Bob's dataset
+indices = random.sample(range(len(trainset)), N)
+selected_images = np.array([trainset[i][0].numpy() for i in indices])
+selected_labels = np.array([trainset[i][1]  for i in indices])
 
-# Serialize data into file:
-json.dump(data, open(cal_path, 'w'))
+# Save images and labels separately
+torch.save(torch.tensor(selected_images), 'data/selected_images.pth')
+torch.save(torch.tensor(selected_labels), 'data/selected_labels.pth')
+
+#Only need to run once, comment out if not needed
+# os.system("circom cp_overall.circom --r1cs --wasm --sym")
+# os.system("snarkjs powersoftau new bn128 18 pot18_0000.ptau -v")
+# os.system('echo "random_string" | snarkjs powersoftau contribute pot18_0000.ptau pot18_0001.ptau --name="First contribution" -v')
+# os.system("snarkjs powersoftau prepare phase2 pot18_0001.ptau pot18_final.ptau -v")
+# os.system("snarkjs groth16 setup cp_overall.r1cs pot18_final.ptau cp_0000.zkey")
+# os.system('echo "random" | snarkjs zkey contribute cp_0000.zkey cp_0001.zkey --name="1st Contributor Name" -v')
+# os.system("snarkjs zkey export verificationkey cp_0001.zkey verification_key.json")
+
 async def main():
     for model_name in models:
         total_times = []
@@ -70,7 +87,7 @@ async def main():
         model = ModelClass()
         torch.save(model.state_dict(), "data/model.pth")
         #Setup the model
-        data = torch.load("data/data.pth")
+        data = torch.load("data/selected_images.pth")
         torch.onnx.export(model,               # model being run
                         data,                   # model input (or a tuple for multiple inputs)
                         model_path,            # where to save the model (can be a file or file-like object)
@@ -85,7 +102,7 @@ async def main():
         py_run_args = ezkl.PyRunArgs()
         py_run_args.input_visibility = "public" #Bob can see this
         py_run_args.output_visibility = "hashed/public" #This hash is given to Bob
-        py_run_args.param_visibility = "private" 
+        py_run_args.param_visibility = "private"
         print("Generating settings")
         res = ezkl.gen_settings(model_path, settings_path, py_run_args=py_run_args)
         assert res
@@ -101,36 +118,8 @@ async def main():
             vk_path,
             pk_path,
         )
-        data_array = ((data).detach().numpy()).reshape([-1]).tolist()
-        data = dict(input_data = [data_array])
-            # Serialize data into file:
-        json.dump( data, open(data_path, 'w' ))
-        #Prep input for MPC
-        model_module = importlib.import_module("model")
-        ModelClass = getattr(model_module, model_name)
-        model = ModelClass()
-        data = torch.load("data/data.pth")
-        label = torch.load("data/lbl.pth")
-        model.eval()
-        output = model(data)
-        mpcout = F.softmax(output, dim=1)
-        mpc_pred = mpcout.detach().numpy()[0]
-        mpc_gt = label.detach().numpy()
-        #
-        if not os.path.exists('../../MP-SPDZ/Player-Data'):
-            os.makedirs('../../MP-SPDZ/Player-Data')
-        p0_path = os.path.join('../../MP-SPDZ/Player-Data','Input-P0-0')
-        p1_path = os.path.join('../../MP-SPDZ/Player-Data','Input-P1-0')
-        with open(p0_path, 'w') as f:
-            for i in mpc_gt:
-                f.write(f'{i:.6f} ')
-            f.write('\n')
-        with open(p1_path, 'w') as f:
-            for i in mpc_pred:
-                f.write(f'{i:.6f} ')
-            f.write('\n')
         #Repeat experiment 5 times
-        for i in range(5):
+        for i in range(1):
             print("Running experiment", i)
             data = torch.load("data/data.pth")
             label = torch.load("data/lbl.pth")
@@ -141,22 +130,23 @@ async def main():
             label = label.unsqueeze(0)
             loss_value = loss(output, label).item()
             # Build the command. The '/usr/bin/time -v' prefix will output detailed resource usage.
-            command = f"/usr/bin/time -v python launcher.py"
-            
+            command = f"/usr/bin/time -v python launcher.py --model_name {model_name}"
             start = time.time()
             result = subprocess.run(
                 command,
                 shell=True,
-                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True
             )
             elapsed = time.time() - start
             total_times.append(elapsed)
+            # for line in result.stdout.splitlines():
+            #     fprint(line,f'results/online_offline_{model_name}.txt')
         #     # Parse the memory usage from result.stderr.
         #     # Look for a line like: "Maximum resident set size (kbytes): 12345"
             mem_usage = None
             for line in result.stderr.splitlines():
+                print(line)
                 if "Maximum resident set size" in line:
                     try:
                         mem_usage = int(line.split(":")[-1].strip())
@@ -170,35 +160,38 @@ async def main():
                 print("Warning: Memory usage not found in output.")
             
             # Calculate precision
-            for line in result.stdout.splitlines():
-                if "cross entropy" in line.lower():
-                    secure_loss_value = line.split(" ")[-1].strip()
-                    secure_loss_value = float(secure_loss_value)
-                if "global data" in line.lower():
-                    data_sent = line.split(" ")[4].strip()
-                    data_sent = float(data_sent)
+            # for line in result.stdout.splitlines():
+            #     if "cross entropy" in line.lower():
+            #         secure_loss_value = line.split(" ")[-1].strip()
+            #         secure_loss_value = float(secure_loss_value)
+            #     if "global data" in line.lower():
+            #         data_sent = line.split(" ")[4].strip()
+            #         data_sent = float(data_sent)
+            #         data_file_size = os.path.getsize("data/data.pth") / (1024 * 1024)
+            #         data_sent += data_file_size
             
             # print(secure_loss_value, loss_value)
-            diff = secure_loss_value - loss_value
-            percentage_diff = (diff / loss_value) * 100
-            total_precision.append(percentage_diff)
+            # diff = secure_loss_value - loss_value
+            # percentage_diff = (diff / loss_value) * 100
+            # total_precision.append(percentage_diff)
             
-            #Get proof size in MB
-            proof_size = os.path.getsize(proof_path) / (1024 * 1024)
-            total_comm.append(proof_size + data_sent)
+            # #Get proof size in MB
+            # proof_size = os.path.getsize(proof_path) / (1024 * 1024)
+            # total_comm.append(proof_size + data_sent)
 
         
-        avg_time = sum(total_times) / len(total_times)
-        avg_memory = sum(total_memory) / len(total_memory) if total_memory else 0
-        avg_precision = sum(total_precision) / len(total_precision)
-        avg_comm = sum(total_comm) / len(total_comm) if total_comm else 0
-        fprint(f"Model {model_name} executed 5 times, average time {avg_time:.3f} seconds with average memory usage {avg_memory:.1f} kB and average precision diff {avg_precision:.3f}%, avg comm overhead {avg_comm:.3f} MB")
-        #Export all time, memory and precision to csv
-        results_file = f"results/exp4_{model_name}.txt"
-        fprint(f"times: {total_times}", results_file)
-        fprint(f"memory: {total_memory}", results_file)
-        fprint(f"precision: {total_precision}", results_file)
-        fprint(f"comm: {total_comm}", results_file)
+        # avg_time = sum(total_times) / len(total_times)
+        # avg_memory = sum(total_memory) / len(total_memory) if total_memory else 0
+        # avg_precision = sum(total_precision) / len(total_precision)
+        # avg_comm = sum(total_comm) / len(total_comm) if total_comm else 0
+        # fprint(f"Model {model_name} executed 5 times, average time {avg_time:.3f} seconds with average memory usage {avg_memory:.1f} kB and average precision diff {avg_precision:.3f}%, avg comm overhead {avg_comm:.3f} MB")
+        # #Export all time, memory and precision to csv
+        # results_file = f"results/exp4_{model_name}.txt"
+        # fprint(f"times: {total_times}", results_file)
+        # fprint(f"memory: {total_memory}", results_file)
+        # fprint(f"precision: {total_precision}", results_file)
+        # fprint(f"comm: {total_comm}", results_file)
+        print("Finish all!")
 
-import asyncio
+
 asyncio.run(main())

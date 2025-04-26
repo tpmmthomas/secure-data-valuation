@@ -11,8 +11,8 @@ alpha_2 = sfix(0.3)
 alpha_3 = sfix(0.4)
 
 # Parameters
-n = 10  # Number of data points
-m = 3072 # Number of features per data point
+n = 20  # Number of data points
+m = 50 # Number of features per data point
 cls = 10 # Number of classes
 
 

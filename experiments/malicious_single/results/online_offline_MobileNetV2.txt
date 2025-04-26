@@ -11,3 +11,68 @@ Consider adding the following at the beginning of your code:
 	program.use_edabit(True)
 ZKP Proof Time: 191.4071524143219
 ZKP Online Time: 9.081898927688599
+Using SPDZ2k security parameter 64
+Using statistical security parameter 40
+Trying to run 64-bit computation
+Cross Entropy loss: 2.28874
+The following benchmarks are including preprocessing (offline phase).
+Time = 0.629157 seconds 
+Data sent = 78.6999 MB in ~699 rounds (party 0 only; use '-v' for more details)
+Global data sent = 157.4 MB (all parties)
+This program might benefit from some protocol options.
+Consider adding the following at the beginning of your code:
+	program.use_edabit(True)
+ZKP Proof Time: 214.75474905967712
+ZKP Online Time: 21.920085191726685
+Using SPDZ2k security parameter 64
+Using statistical security parameter 40
+Trying to run 64-bit computation
+Cross Entropy loss: 2.28876
+The following benchmarks are including preprocessing (offline phase).
+Time = 0.643765 seconds 
+Data sent = 78.6999 MB in ~699 rounds (party 0 only; use '-v' for more details)
+Global data sent = 157.4 MB (all parties)
+This program might benefit from some protocol options.
+Consider adding the following at the beginning of your code:
+	program.use_edabit(True)
+ZKP Proof Time: 222.23694586753845
+ZKP Online Time: 22.093188285827637
+Using SPDZ2k security parameter 64
+Using statistical security parameter 40
+Trying to run 64-bit computation
+Cross Entropy loss: 2.28874
+The following benchmarks are including preprocessing (offline phase).
+Time = 0.635023 seconds 
+Data sent = 78.6999 MB in ~699 rounds (party 0 only; use '-v' for more details)
+Global data sent = 157.4 MB (all parties)
+This program might benefit from some protocol options.
+Consider adding the following at the beginning of your code:
+	program.use_edabit(True)
+ZKP Proof Time: 221.62254238128662
+ZKP Online Time: 21.8305881023407
+Using SPDZ2k security parameter 64
+Using statistical security parameter 40
+Trying to run 64-bit computation
+Cross Entropy loss: 2.28873
+The following benchmarks are including preprocessing (offline phase).
+Time = 0.638557 seconds 
+Data sent = 78.6999 MB in ~699 rounds (party 0 only; use '-v' for more details)
+Global data sent = 157.4 MB (all parties)
+This program might benefit from some protocol options.
+Consider adding the following at the beginning of your code:
+	program.use_edabit(True)
+ZKP Proof Time: 218.9105031490326
+ZKP Online Time: 22.436047315597534
+Using SPDZ2k security parameter 64
+Using statistical security parameter 40
+Trying to run 64-bit computation
+Cross Entropy loss: 2.28876
+The following benchmarks are including preprocessing (offline phase).
+Time = 0.641487 seconds 
+Data sent = 78.6999 MB in ~699 rounds (party 0 only; use '-v' for more details)
+Global data sent = 157.4 MB (all parties)
+This program might benefit from some protocol options.
+Consider adding the following at the beginning of your code:
+	program.use_edabit(True)
+ZKP Proof Time: 220.61534094810486
+ZKP Online Time: 21.898205995559692

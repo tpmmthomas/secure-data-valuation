@@ -46,3 +46,4 @@ ezkl
 **/build
 **/circom
 *.ptau
+**/node_modules

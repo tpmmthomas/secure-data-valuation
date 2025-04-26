@@ -31,7 +31,7 @@ label_path = os.path.join('data','label.json')
 proof_path = os.path.join('data','test.pf')
 
 # List of models to benchmark.
-models = ['ResNet18'] #'SVM', 'LeNet', 'AlexNet',
+models = ['MobileNetV2'] #'SVM', 'LeNet', 'AlexNet',
 
 with open("results/exp4.txt", "w") as f:
         pass
@@ -86,7 +86,7 @@ async def main():
         py_run_args.input_visibility = "public" #Bob can see this
         py_run_args.output_visibility = "hashed/public" #This hash is given to Bob
         py_run_args.param_visibility = "private"
-        py_run_args.logrows = 12 #log rows = 14 used to work for ResNet18
+        py_run_args.logrows = 16 #log rows = 14 used to work for ResNet18
         print("Generating settings")
         res = ezkl.gen_settings(model_path, settings_path, py_run_args=py_run_args)
         assert res
