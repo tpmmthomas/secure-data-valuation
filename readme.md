@@ -74,7 +74,7 @@ npm install
 
 ## Running the notebook examples
 
-There are three notebook examples that correspond to our protocols $$\Pi_\mathsf{SS}$$, $$\Pi_\mathsf{SM}$ and $$\Pi_\mathsf{MM}$$. You can run the notebooks in the `notebooks` directory.  
+There are three notebook examples that correspond to our protocols $$\Pi_\mathsf{SS}$$, $$\Pi_\mathsf{SM}$$ and $$\Pi_\mathsf{MM}$$. You can run the notebooks in the `notebooks` directory.  
 
 ## Experiments
 
