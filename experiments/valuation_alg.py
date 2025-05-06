@@ -1,7 +1,7 @@
 import torch
 from torch import nn
 from valuation_template import SingleDataValuation, MultiDataValuation
-from MonteCarloShapley import MonteCarloShapley
+# from MonteCarloShapley import MonteCarloShapley
 from sklearn.cluster import KMeans
 import numpy as np
 from sklearn.random_projection import SparseRandomProjection
@@ -29,19 +29,19 @@ class SingleLossValuation(SingleDataValuation):
         #     self.value = loss.item()
         #     return loss.item()
     
-class SingleShapleyValuation(SingleDataValuation):
-    def __init__(self, model: nn.Module, data_point, label, trainer_data, testset,datasize,learning_rate,epochs,device,batch_size):
-        super().__init__(model, data_point, label)
-        self.trainer_data = trainer_data
-        self.value = None
-        #Insert the data point as the first element of the trainer data
-        trainer_data.insert(0, (data_point, label))
-        self.trainer_data = trainer_data
-        self.MC = MonteCarloShapley(model,self.trainer_data, testset, L = 1,  beta = 1, c = 1, a = 0.05, b = 0.05, sup = 5, num_classes = 10, datasize = datasize, learning_rate = learning_rate, epochs = epochs, device = device, batch_size = batch_size)
+# class SingleShapleyValuation(SingleDataValuation):
+#     def __init__(self, model: nn.Module, data_point, label, trainer_data, testset,datasize,learning_rate,epochs,device,batch_size):
+#         super().__init__(model, data_point, label)
+#         self.trainer_data = trainer_data
+#         self.value = None
+#         #Insert the data point as the first element of the trainer data
+#         trainer_data.insert(0, (data_point, label))
+#         self.trainer_data = trainer_data
+#         self.MC = MonteCarloShapley(model,self.trainer_data, testset, L = 1,  beta = 1, c = 1, a = 0.05, b = 0.05, sup = 5, num_classes = 10, datasize = datasize, learning_rate = learning_rate, epochs = epochs, device = device, batch_size = batch_size)
 
-    def data_value(self):
-        shapleyValues = self.MC.run([0])
-        return shapleyValues[0]
+#     def data_value(self):
+#         shapleyValues = self.MC.run([0])
+#         return shapleyValues[0]
     
 class SingleRandomValuation(SingleDataValuation):
     def __init__(self, model: nn.Module, data_point, label):

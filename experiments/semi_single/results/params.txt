@@ -1,4 +1,0 @@
-SVM: Total number of parameters: 30730
-LeNet: Total number of parameters: 62006
-AlexNet: Total number of parameters: 3302986
-ResNet18: Total number of parameters: 11173962

@@ -1,1 +1,0 @@
-Model MobileNetV2 executed 5 times, average time 248.605 seconds with average memory usage 124527554.4 kB and average precision diff 0.003%, avg comm overhead 160.113 MB
