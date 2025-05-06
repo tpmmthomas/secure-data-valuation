@@ -180,8 +180,8 @@ async def main():
                 if "global data" in line.lower():
                     data_sent = line.split(" ")[4].strip()
                     data_sent = float(data_sent)
-                    data_file_size = os.path.getsize("data/data.pth") / (1024 * 1024)
-                    data_sent += data_file_size
+                    data_sent += os.path.getsize("data/data.pth") / (1024 * 1024)
+                    
             
             # print(secure_loss_value, loss_value)
             diff = secure_loss_value - loss_value

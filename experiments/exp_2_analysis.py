@@ -2,8 +2,8 @@ import re
 import matplotlib.pyplot as plt
 
 all_acc = []
-DATASET = "cifar10"
-MODEL = "resnet18"
+DATASET = "mnist"
+MODEL = "cnn"
 NAME = "formal1"
 
 # Load the accuracy data from text files for each seed
@@ -29,12 +29,12 @@ for method, accuracies in all_acc[0].items():
     plt.plot(range(len(accuracies)), mean_acc, marker='o', linewidth=2, markersize=8, label=method)
 
 # Set larger font sizes for the axes labels, title, and tick labels
-plt.xlabel('Iteration', fontsize=20)
-plt.ylabel('Accuracy', fontsize=20)
-plt.title('CIFAR-10: Accuracy Curve against different AL methods', fontsize=24)
-plt.xticks(fontsize=22)
-plt.yticks(fontsize=22)
-plt.legend(fontsize=20)
+plt.xlabel('Iteration', fontsize=24)
+plt.ylabel('Accuracy', fontsize=24)
+plt.title('MNIST: Accuracy Curve against different AL methods', fontsize=27)
+plt.xticks(fontsize=25)
+plt.yticks(fontsize=25)
+plt.legend(fontsize=24)
 plt.grid(True)
 plt.tight_layout()
 

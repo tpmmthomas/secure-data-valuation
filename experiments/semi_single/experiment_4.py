@@ -8,7 +8,7 @@ import torch.nn as nn
 import pandas as pd
 
 # List of models to benchmark.
-models = ['SVM', 'LeNet', 'AlexNet', 'ResNet18']
+models = ['MobileNetV2']
 
 with open(f"results/exp4.txt", "w") as f:
         pass

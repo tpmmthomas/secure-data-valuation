@@ -1,4 +1,0 @@
-Model SVM executed 5 times, average time 1.010 seconds with average memory usage 232627.2 kB and average precision diff 0.531%, average communication 565144.000 Bytes
-Model LeNet executed 5 times, average time 1.499 seconds with average memory usage 238996.8 kB and average precision diff 0.517%, average communication 13440056.000 Bytes
-Model AlexNet executed 5 times, average time 18.905 seconds with average memory usage 353487.2 kB and average precision diff 0.415%, average communication 328010648.000 Bytes
-Model ResNet18 executed 5 times, average time 19.354 seconds with average memory usage 555255.2 kB and average precision diff 0.404%, average communication 447802264.000 Bytes

@@ -93,7 +93,7 @@ const input = {
     d: scaledD,
     idx: idx,
 };
-  fs.writeFileSync("input.json", JSON.stringify(input, null, 2));
+  fs.writeFileSync("data/input.json", JSON.stringify(input, null, 2));
 }
 
 main().catch(console.error);

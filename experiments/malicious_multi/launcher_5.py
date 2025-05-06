@@ -99,7 +99,7 @@ async def run_experiment(model_name,N=N,DIM=DIM,K=K,M=M):
         exit_code = os.system("node commit.js")
         assert exit_code == 0, "Command 'node commit.js' failed"
         # Generate the witness
-        exit_code = os.system("node cp_overall_js/generate_witness.js cp_overall_js/cp_overall.wasm data/input.json data/witness.wtns")
+        exit_code = os.system("node cp_overall2_js/generate_witness.js cp_overall2_js/cp_overall2.wasm data/input.json data/witness.wtns")
         assert exit_code == 0, "Command to generate witness failed"
         # Generate the proof
         exit_code = os.system("snarkjs groth16 prove data/cp_0001.zkey data/witness.wtns data/proof.json data/public.json")

@@ -16,6 +16,7 @@ import numpy as np
 import torchvision.transforms as transforms
 from launcher import run_experiment
 import asyncio
+from plaintext import pipeline_total_score
 
 #Specifying some path parameters
 model_path = os.path.join('data','network.onnx')
@@ -31,7 +32,7 @@ label_path = os.path.join('data','label.json')
 proof_path = os.path.join('data','test.pf')
 
 # List of models to benchmark.
-models = ['SVM', 'LeNet','MobileNetV2'] #'SVM', 'LeNet', 'AlexNet',
+models = ['SVM', 'LeNet','MobileNetV2'] # 'AlexNet',SVM', 'LeNet','
 
 with open("results/exp4.txt", "w") as f:
         pass
@@ -68,12 +69,12 @@ torch.save(torch.tensor(selected_labels), 'data/selected_labels.pth')
 
 #Only need to run once, comment out if not needed
 # os.system("circom cp_overall.circom --r1cs --wasm --sym")
-# os.system("snarkjs powersoftau new bn128 18 pot18_0000.ptau -v")
-# os.system('echo "random_string" | snarkjs powersoftau contribute pot18_0000.ptau pot18_0001.ptau --name="First contribution" -v')
-# os.system("snarkjs powersoftau prepare phase2 pot18_0001.ptau pot18_final.ptau -v")
-# os.system("snarkjs groth16 setup cp_overall.r1cs pot18_final.ptau cp_0000.zkey")
-# os.system('echo "random" | snarkjs zkey contribute cp_0000.zkey cp_0001.zkey --name="1st Contributor Name" -v')
-# os.system("snarkjs zkey export verificationkey cp_0001.zkey verification_key.json")
+# os.system("snarkjs powersoftau new bn128 18 data/pot18_0000.ptau -v")
+# os.system('echo "random_string" | snarkjs powersoftau contribute data/pot18_0000.ptau data/pot18_0001.ptau --name="First contribution" -v')
+# os.system("snarkjs powersoftau prepare phase2 data/pot18_0001.ptau data/pot18_final.ptau -v")
+# os.system("snarkjs groth16 setup cp_overall.r1cs data/pot18_final.ptau data/cp_0000.zkey")
+# os.system('echo "random" | snarkjs zkey contribute data/cp_0000.zkey data/cp_0001.zkey --name="1st Contributor Name" -v')
+# os.system("snarkjs zkey export verificationkey data/cp_0001.zkey data/verification_key.json")
 
 async def main():
     for model_name in models:
@@ -81,6 +82,12 @@ async def main():
         total_memory = []
         total_precision = []
         total_comm = []
+        total_cluster = []
+        total_cp_off = []
+        total_cp_on = []
+        total_zkp_off = []
+        total_zkp_on = []
+        total_mpc = []
         # Create the model and save it in the data directory.
         model_module = importlib.import_module("model")
         ModelClass = getattr(model_module, model_name)
@@ -119,31 +126,58 @@ async def main():
             pk_path,
         )
         #Repeat experiment 5 times
-        for i in range(1):
-            print("Running experiment", i)
-            data = torch.load("data/data.pth")
-            label = torch.load("data/lbl.pth")
-            loss = nn.CrossEntropyLoss()
-            model.eval()
-            output = model(data)
-            _, label = label.max(dim=0)
-            label = label.unsqueeze(0)
-            loss_value = loss(output, label).item()
+        print("Start exp")
+        for i in range(5):
+            print("Running exp ", i)
             # Build the command. The '/usr/bin/time -v' prefix will output detailed resource usage.
             command = f"/usr/bin/time -v python launcher.py --model_name {model_name}"
             start = time.time()
             result = subprocess.run(
                 command,
                 shell=True,
+                stdout=subprocess.PIPE,
                 stderr=subprocess.PIPE,
                 universal_newlines=True
             )
             elapsed = time.time() - start
             total_times.append(elapsed)
-            # for line in result.stdout.splitlines():
-            #     fprint(line,f'results/online_offline_{model_name}.txt')
-        #     # Parse the memory usage from result.stderr.
-        #     # Look for a line like: "Maximum resident set size (kbytes): 12345"
+            correct_score = pipeline_total_score(model_name)
+            secure_score = None
+            # Parse result.stdout for timing information
+            data_sent = 0
+            for line in result.stdout.splitlines():
+                if "Clustering time:" in line:
+                    m = re.search(r"Clustering time:\s*([\d\.]+)", line)
+                    if m:
+                        total_cluster.append(float(m.group(1)))
+                elif "Challenge Protocol online time:" in line:
+                    m = re.search(r"Challenge Protocol online time:\s*([\d\.]+)", line)
+                    if m:
+                        total_cp_on.append(float(m.group(1)))
+                elif "Challenge Protocol offline time:" in line:
+                    m = re.search(r"Challenge Protocol offline time:\s*([\d\.]+)", line)
+                    if m:
+                        total_cp_off.append(float(m.group(1)))
+                elif "ZKP for model inferences offline time:" in line:
+                    m = re.search(r"ZKP for model inferences offline time:\s*([\d\.]+)", line)
+                    if m:
+                        total_zkp_off.append(float(m.group(1)))
+                elif "ZKP for model inferences online time:" in line:
+                    m = re.search(r"ZKP for model inferences online time:\s*([\d\.]+)", line)
+                    if m:
+                        total_zkp_on.append(float(m.group(1)))
+                elif "MPC time:" in line:
+                    m = re.search(r"MPC time:\s*([\d\.]+)", line)
+                    if m:
+                        total_mpc.append(float(m.group(1)))
+                elif "Final Valuation:" in line:
+                    m = re.search(r"Final Valuation:\s*([\d\.]+)", line)
+                    if m:
+                        secure_score = float(m.group(1))
+                elif "Global data sent" in line:
+                    m = re.search(r"Global data sent\s*=\s*([\d\.]+)", line)
+                    if m:
+                        data_sent += float(m.group(1))
             mem_usage = None
             for line in result.stderr.splitlines():
                 print(line)
@@ -153,44 +187,50 @@ async def main():
                     except ValueError:
                         mem_usage = None
                     break
-            
             if mem_usage is not None:
                 total_memory.append(mem_usage)
             else:
                 print("Warning: Memory usage not found in output.")
             
             # Calculate precision
-            # for line in result.stdout.splitlines():
-            #     if "cross entropy" in line.lower():
-            #         secure_loss_value = line.split(" ")[-1].strip()
-            #         secure_loss_value = float(secure_loss_value)
-            #     if "global data" in line.lower():
-            #         data_sent = line.split(" ")[4].strip()
-            #         data_sent = float(data_sent)
-            #         data_file_size = os.path.getsize("data/data.pth") / (1024 * 1024)
-            #         data_sent += data_file_size
+            if secure_score is not None:
+                print("Score", secure_score, correct_score)
+                diff = abs(secure_score - correct_score)
+                percentage_diff = (diff / correct_score) * 100
+                total_precision.append(percentage_diff)
+            else:
+                print("Warning: Secure score not found in output.")
+                
+            # Calculate communication overhead
+            def get_file_size(file_path):
+                if os.path.exists(file_path):
+                    return os.path.getsize(file_path) / (1024 * 1024)
+                else:
+                    assert False, f"File {file_path} does not exist."
             
-            # print(secure_loss_value, loss_value)
-            # diff = secure_loss_value - loss_value
-            # percentage_diff = (diff / loss_value) * 100
-            # total_precision.append(percentage_diff)
-            
-            # #Get proof size in MB
-            # proof_size = os.path.getsize(proof_path) / (1024 * 1024)
-            # total_comm.append(proof_size + data_sent)
-
-        
-        # avg_time = sum(total_times) / len(total_times)
-        # avg_memory = sum(total_memory) / len(total_memory) if total_memory else 0
-        # avg_precision = sum(total_precision) / len(total_precision)
-        # avg_comm = sum(total_comm) / len(total_comm) if total_comm else 0
-        # fprint(f"Model {model_name} executed 5 times, average time {avg_time:.3f} seconds with average memory usage {avg_memory:.1f} kB and average precision diff {avg_precision:.3f}%, avg comm overhead {avg_comm:.3f} MB")
-        # #Export all time, memory and precision to csv
-        # results_file = f"results/exp4_{model_name}.txt"
-        # fprint(f"times: {total_times}", results_file)
-        # fprint(f"memory: {total_memory}", results_file)
-        # fprint(f"precision: {total_precision}", results_file)
-        # fprint(f"comm: {total_comm}", results_file)
+            assert data_sent > 0, "Data sent should be greater than 0"
+            data_sent += get_file_size('data/rep_points_to_submit.pth')
+            # Estimate that each integer takes 4 bytes (32-bit int) and convert to MB.
+            data_sent += (M * 4) / (1024 * 1024)
+            data_sent += get_file_size("data/verification_key.json")
+            data_sent += get_file_size("data/public.json") * M
+            data_sent += get_file_size("data/proof.json") * M
+            data_sent += get_file_size(proof_path)
+            data_sent += get_file_size(vk_path)
+            total_comm.append(data_sent)
+        results_file = f"results/exp4_{model_name}.txt"
+        fprint(f"times: {total_times}", results_file)
+        fprint(f"memory: {total_memory}", results_file)
+        fprint(f"precision: {total_precision}", results_file)
+        fprint(f"comm: {total_comm}", results_file)
+        fprint(f"cluster: {total_cluster}", results_file)
+        fprint(f"cp_off: {total_cp_off}", results_file)
+        fprint(f"cp_on: {total_cp_on}", results_file)
+        fprint(f"zkp_off: {total_zkp_off}", results_file)
+        fprint(f"zkp_on: {total_zkp_on}", results_file)
+        fprint(f"mpc: {total_mpc}", results_file)
+        fprint(f"correct score: {correct_score}", results_file)
+        fprint(f"secure score: {secure_score}", results_file)
         print("Finish all!")
 
 

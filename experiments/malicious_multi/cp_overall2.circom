@@ -93,20 +93,6 @@ template DistanceProof(n, dim, bitlen) {
     signal input idx;     // which point we “select”
     signal input arrBits[dim][bitlen]; //the true point in D_B
     signal input randBits[bitlen]; // the randomness in commiting D_B
-
-    //Verify the commitment
-    component comVerify = CommitmentProofArray(dim,bitlen);
-    comVerify.commitX <== commitX;
-    comVerify.commitY <== commitY;
-    for (var i = 0; i < dim; i++) {
-        for (var j = 0; j < bitlen; j++) {
-            comVerify.arrBits[i][j] <== arrBits[i][j];
-        }
-    }
-    for (var j = 0; j < bitlen; j++) {
-        comVerify.randBits[j] <== randBits[j];
-    }
-    
     
     //Retrieve the x value
     signal x[dim];
@@ -156,4 +142,4 @@ template DistanceProof(n, dim, bitlen) {
 }
 
 // --- instantiate for your N points (replace 4 with your actual N) ---
-component main {public [points,d, commitX, commitY]} = DistanceProof(20, 100, 32);
+component main {public [points,d, commitX, commitY]} = DistanceProof(20, 50, 32);
