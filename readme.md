@@ -74,4 +74,4 @@ npm install
 
 ## Running the notebook examples
 
-Simply go to the folder of the scenario you want to run `[single-point/multi-point]/[semi-honest/malicious]` and launch the `example.ipynb` notebook. Detailed code and explanations are provided in the notebook.
+There are three notebook examples that correspond to our protocols $$\Pi_\mathsf{SS}$$, $$\Pi_\mathsf{SM}$ and $$\Pi_\mathsf{MM}$$. You can run the notebooks in the `notebooks` directory. 
