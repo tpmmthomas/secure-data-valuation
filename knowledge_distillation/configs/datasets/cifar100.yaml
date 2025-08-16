@@ -1,0 +1,30 @@
+# CIFAR-100 Dataset Configuration
+name: "cifar100"
+data_dir: "./data/cifar100"
+batch_size: 128
+num_workers: 4
+pin_memory: true
+download: true
+augmentation: true
+normalize: true
+validation_split: 0.1
+
+# Dataset-specific parameters
+image_size: 32
+num_classes: 100
+
+# Augmentation settings
+augmentation_params:
+  random_crop:
+    size: 32
+    padding: 4
+  random_horizontal_flip:
+    probability: 0.5
+  cutout:
+    enabled: false
+    length: 16
+
+# Normalization stats
+normalization_stats:
+  mean: [0.5071, 0.4867, 0.4408]
+  std: [0.2675, 0.2565, 0.2761]

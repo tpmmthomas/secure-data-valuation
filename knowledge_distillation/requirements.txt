@@ -1,0 +1,65 @@
+# Core dependencies
+torch
+torchvision
+torchaudio
+
+# Configuration and data handling
+PyYAML
+omegaconf
+hydra-core
+
+# Scientific computing
+numpy
+scipy
+scikit-learn
+
+# Visualization and monitoring
+matplotlib
+seaborn
+tensorboard
+wandb
+
+# Progress bars and utilities
+tqdm
+rich
+
+# Image processing
+Pillow
+opencv-python
+
+# Data validation and configuration
+pydantic
+marshmallow
+
+# Development and testing
+pytest
+pytest-cov
+black
+flake8
+isort
+mypy
+
+# Optional: Weights & Biases integration
+# wandb
+
+# Optional: Advanced optimizers
+# timm
+
+# Optional: Model compression
+# torch-pruning
+
+# Optional: Distributed training
+# torch-distributed
+
+# Development tools
+jupyter
+ipython
+pre-commit
+
+# Profiling and debugging
+memory-profiler
+line-profiler
+
+# Export and deployment
+onnx
+onnxruntime

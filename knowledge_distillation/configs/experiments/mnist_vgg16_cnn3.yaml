@@ -1,0 +1,57 @@
+# MNIST Knowledge Distillation: VGG16 Teacher -> CNN3 Student
+experiment:
+  name: "mnist_vgg16_cnn3"
+  seed: 42
+  output_dir: "artifacts/mnist_vgg16_cnn3"
+  tags: ["mnist", "vgg16", "cnn3", "lightweight"]
+  notes: "Lightweight student training on MNIST dataset"
+
+dataset:
+  name: "mnist"
+  data_dir: "./data"
+  batch_size: 256
+  num_workers: 2
+  pin_memory: true
+  download: true
+  augmentation: true
+  normalize: true
+
+teacher:
+  name: "vgg16"
+  pretrained: false  # No ImageNet pretraining for MNIST
+  epochs: 5
+  lr: 0.001
+  momentum: 0.9
+  weight_decay: 0.0001
+  optimizer: "adam"
+  scheduler: "step"
+  scheduler_params:
+    step_size: 3
+    gamma: 0.1
+
+student:
+  name: "cnn3"
+  epochs: 15
+  lr: 0.001
+  momentum: 0.9
+  weight_decay: 0.0001
+  optimizer: "adam"
+  scheduler: "step"
+  scheduler_params:
+    step_size: 8
+    gamma: 0.1
+  dropout: 0.3
+  supervised_baseline: true
+  supervised_epochs: 8
+
+distillation:
+  alpha: 0.7
+  temperature: 3.0
+  loss_type: "kl_div"
+
+logging:
+  log_interval: 50
+  save_interval: 3
+  eval_interval: 1
+  use_tensorboard: true
+  use_wandb: false
