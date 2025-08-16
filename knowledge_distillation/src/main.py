@@ -121,6 +121,23 @@ def create_override_config(args):
     
     return overrides
 
+def _config_to_dict(config):
+    """Convert dataclass config to JSON-serializable dictionary."""
+    import dataclasses
+    
+    def _convert_value(value):
+        if dataclasses.is_dataclass(value):
+            return {field.name: _convert_value(getattr(value, field.name)) 
+                    for field in dataclasses.fields(value)}
+        elif isinstance(value, (list, tuple)):
+            return [_convert_value(item) for item in value]
+        elif isinstance(value, dict):
+            return {k: _convert_value(v) for k, v in value.items()}
+        else:
+            return value
+    
+    return _convert_value(config)
+
 
 def main():
     """Main training function."""
@@ -213,7 +230,7 @@ def main():
             
             # Create experiment summary
             create_experiment_summary(
-                config.__dict__,
+                _config_to_dict(config),
                 results.get("final", {}),
                 output_dir / "experiment_summary.json"
             )

@@ -59,6 +59,23 @@ class KnowledgeDistillationTrainer:
             "final": {}
         }
     
+    def _config_to_dict(self, config):
+        """Convert dataclass config to JSON-serializable dictionary."""
+        import dataclasses
+        
+        def _convert_value(value):
+            if dataclasses.is_dataclass(value):
+                return {field.name: _convert_value(getattr(value, field.name)) 
+                       for field in dataclasses.fields(value)}
+            elif isinstance(value, (list, tuple)):
+                return [_convert_value(item) for item in value]
+            elif isinstance(value, dict):
+                return {k: _convert_value(v) for k, v in value.items()}
+            else:
+                return value
+        
+        return _convert_value(config)
+    
     def _setup_data(self):
         """Setup datasets and data loaders."""
         self.logger.info(f"Setting up {self.config.dataset.name} dataset...")
@@ -488,7 +505,7 @@ class KnowledgeDistillationTrainer:
             "student_supervised_results": student_sup_results,
             "student_kd_results": student_kd_results,
             "total_training_time": total_time,
-            "config": self.config.__dict__
+            "config": self._config_to_dict(self.config)
         }
         
         # Save history

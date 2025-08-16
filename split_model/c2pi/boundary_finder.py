@@ -90,7 +90,7 @@ class BoundaryFinder:
             
             # Phase 2: Accuracy evaluation (if privacy is acceptable)
             # Privacy is preserved if SSIM is below threshold (attack fails)
-            if privacy_metrics['privacy_rate'] >= (1 - self.config.privacy_threshold):
+            if privacy_metrics['privacy_preserved_rate'] >= (self.config.privacy_threshold):
                 accuracy_metrics = self._evaluate_accuracy_layer(
                     layer_idx=layer_idx,
                     test_loader=test_loader
@@ -112,7 +112,7 @@ class BoundaryFinder:
             
             results[layer_idx] = layer_results
             
-            print(f"  Privacy Rate: {privacy_metrics['privacy_rate']:.3f}")
+            print(f"  Privacy Preserved Rate: {privacy_metrics['privacy_preserved_rate']:.3f}")
             print(f"  Accuracy: {accuracy_metrics['accuracy']:.3f}")
         
         return results
@@ -148,7 +148,7 @@ class BoundaryFinder:
                 
                 # Create simple config object with required attributes
                 class SimpleDINAConfig:
-                    def __init__(self, device, privacy_threshold):
+                    def __init__(self, device, ssim_threshold):
                         self.img_size = input_shape[-1]  # Assuming square images
                         self.device = str(device)
                         self.learning_rate = lr
@@ -156,10 +156,11 @@ class BoundaryFinder:
                         self.weight_decay = 1e-4
                         self.dina_epochs = epochs
                         self.verbose = True
-                        self.ssim_threshold = privacy_threshold
+                        self.ssim_threshold = ssim_threshold
                         self.alpha_base = None  # Will use default coefficients
+                        self.assert_shapes = False  # Disable shape assertions for simple config
                 
-                dina_config = SimpleDINAConfig(self.device, self.config.privacy_threshold)
+                dina_config = SimpleDINAConfig(self.device, self.config.ssim_threshold)
                 
                 # Use DINA attack - attack at the specified layer
                 attacker = DINAAttack(
@@ -178,7 +179,7 @@ class BoundaryFinder:
                 
                 # Convert to expected format
                 attack_results = {
-                    'privacy_rate': 1.0 - attack_result.success_rate,  # Privacy preserved = 1 - attack success
+                    'privacy_preserved_rate': 1.0 - attack_result.success_rate,  # Privacy preserved = 1 - attack success
                     'attack_success_rate': attack_result.success_rate,
                     'avg_ssim': attack_result.avg_ssim,
                     'max_ssim': np.max(attack_result.ssim_scores),
@@ -195,7 +196,7 @@ class BoundaryFinder:
             print(f"    Error in privacy evaluation: {e}")
             # Return safe defaults if attack fails
             return {
-                'privacy_rate': 1.0,  # Assume privacy is preserved
+                'privacy_preserved_rate': 1.0,  # Assume privacy is preserved
                 'attack_success_rate': 0.0,
                 'avg_ssim': 0.0,
                 'max_ssim': 0.0,
@@ -260,7 +261,7 @@ class BoundaryFinder:
         suitable_layers = []
         
         for layer_idx, metrics in results.items():
-            privacy_ok = metrics['privacy_rate'] >= (1 - self.config.privacy_threshold)
+            privacy_ok = metrics['privacy_preserved_rate'] >= (self.config.privacy_threshold)
             accuracy_ok = metrics.get('passes_accuracy_threshold', False)
             
             if privacy_ok and accuracy_ok:
@@ -311,7 +312,7 @@ class BoundaryFinder:
         if optimal_layer is not None:
             report.append(f"Optimal Boundary Layer: {optimal_layer}")
             opt_metrics = results[optimal_layer]
-            report.append(f"Privacy Rate: {opt_metrics['privacy_rate']:.3f}")
+            report.append(f"Privacy Rate: {opt_metrics['privacy_preserved_rate']:.3f}")
             report.append(f"Accuracy: {opt_metrics['accuracy']:.3f}")
             report.append(f"Attack Success Rate: {opt_metrics['attack_success_rate']:.3f}")
         else:
@@ -324,7 +325,7 @@ class BoundaryFinder:
         for layer_idx in sorted(results.keys()):
             metrics = results[layer_idx]
             report.append(f"Layer {layer_idx:2d}: "
-                         f"Privacy={metrics['privacy_rate']:.3f}, "
+                         f"Privacy={metrics['privacy_preserved_rate']:.3f}, "
                          f"Accuracy={metrics['accuracy']:.3f}, "
                          f"SSIM={metrics['avg_ssim']:.3f}")
         

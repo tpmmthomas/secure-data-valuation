@@ -9,7 +9,23 @@ from typing import List
 
 
 def get_model(model_name: str, num_classes: int, pretrained: bool = True) -> nn.Module:
-    """Load and configure model for C2PI experiments."""
+    """
+    Load and configure model for C2PI experiments.
+    
+    Supported models:
+    - vgg11, vgg16, vgg19: VGG architectures with ImageNet pretraining
+    - resnet18, resnet50: ResNet architectures with ImageNet pretraining  
+    - alexnet: AlexNet with ImageNet pretraining
+    - cnn5: Simple 5-layer CNN with random initialization
+    
+    Args:
+        model_name: Name of the model architecture
+        num_classes: Number of output classes
+        pretrained: Whether to use pretrained weights (ignored for cnn5)
+        
+    Returns:
+        Configured PyTorch model
+    """
     
     model_name = model_name.lower()
     
@@ -22,18 +38,95 @@ def get_model(model_name: str, num_classes: int, pretrained: bool = True) -> nn.
         model = models.vgg19(weights=models.VGG19_Weights.IMAGENET1K_V1 if pretrained else None)
         model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, num_classes)
         
+    elif model_name == "vgg11":
+        model = models.vgg11(weights=models.VGG11_Weights.IMAGENET1K_V1 if pretrained else None)
+        model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, num_classes)
+        
     elif model_name == "resnet50":
         model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1 if pretrained else None)
+        model.fc = nn.Linear(model.fc.in_features, num_classes)
+        
+    elif model_name == "resnet18":
+        model = models.resnet18(weights=models.ResNet18_Weights.IMAGENET1K_V1 if pretrained else None)
         model.fc = nn.Linear(model.fc.in_features, num_classes)
         
     elif model_name == "alexnet":
         model = models.alexnet(weights=models.AlexNet_Weights.IMAGENET1K_V1 if pretrained else None)
         model.classifier[-1] = nn.Linear(model.classifier[-1].in_features, num_classes)
         
+    elif model_name == "cnn5":
+        # 5-layer CNN with randomly initialized weights
+        model = CNN5(num_classes=num_classes)
+        
     else:
-        raise ValueError(f"Unsupported model: {model_name}")
+        raise ValueError(f"Unsupported model: {model_name}. Supported models: vgg11, vgg16, vgg19, resnet18, resnet50, alexnet, cnn5")
     
     return model
+
+
+class CNN5(nn.Module):
+    """
+    Simple 5-layer CNN model for experiments.
+    Architecture: Conv -> ReLU -> Conv -> ReLU -> MaxPool -> Conv -> ReLU -> Conv -> ReLU -> MaxPool -> FC
+    """
+    
+    def __init__(self, num_classes: int = 10, input_channels: int = 3):
+        super(CNN5, self).__init__()
+        
+        # Feature extraction layers
+        self.features = nn.Sequential(
+            # Layer 1: Conv + ReLU
+            nn.Conv2d(input_channels, 32, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            
+            # Layer 2: Conv + ReLU + MaxPool
+            nn.Conv2d(32, 64, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Layer 3: Conv + ReLU
+            nn.Conv2d(64, 128, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            
+            # Layer 4: Conv + ReLU + MaxPool
+            nn.Conv2d(128, 256, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.MaxPool2d(kernel_size=2, stride=2),
+            
+            # Layer 5: Conv + ReLU + AdaptiveAvgPool
+            nn.Conv2d(256, 512, kernel_size=3, padding=1),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d((1, 1))
+        )
+        
+        # Classifier
+        self.classifier = nn.Sequential(
+            nn.Flatten(),
+            nn.Dropout(0.5),
+            nn.Linear(512, 256),
+            nn.ReLU(inplace=True),
+            nn.Dropout(0.5),
+            nn.Linear(256, num_classes)
+        )
+        
+        # Initialize weights
+        self._initialize_weights()
+    
+    def forward(self, x):
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
+    
+    def _initialize_weights(self):
+        """Initialize weights using Xavier/Glorot initialization."""
+        for m in self.modules():
+            if isinstance(m, nn.Conv2d):
+                nn.init.xavier_uniform_(m.weight)
+                if m.bias is not None:
+                    nn.init.constant_(m.bias, 0)
+            elif isinstance(m, nn.Linear):
+                nn.init.xavier_uniform_(m.weight)
+                nn.init.constant_(m.bias, 0)
 
 
 def get_candidate_layers(model: nn.Module, only_conv_relu: bool = True) -> List[int]:

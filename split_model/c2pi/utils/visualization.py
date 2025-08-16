@@ -18,7 +18,8 @@ sns.set_palette("husl")
 
 def plot_boundary_analysis(results: Dict[int, Dict], 
                           save_path: Optional[str] = None,
-                          title: str = "Boundary Layer Analysis") -> plt.Figure:
+                          title: str = "Boundary Layer Analysis",
+                          privacy_threshold: float = 0.7) -> plt.Figure:
     """
     Plot privacy vs accuracy trade-off for different boundary layers.
     
@@ -33,7 +34,7 @@ def plot_boundary_analysis(results: Dict[int, Dict],
     
     # Extract data for plotting
     layers = sorted(results.keys())
-    privacy_rates = [results[layer]['privacy_rate'] for layer in layers]
+    privacy_rates = [results[layer]['privacy_preserved_rate'] for layer in layers]
     accuracies = [results[layer]['accuracy'] for layer in layers]
     attack_success_rates = [results[layer]['attack_success_rate'] for layer in layers]
     
@@ -42,7 +43,7 @@ def plot_boundary_analysis(results: Dict[int, Dict],
     
     # Plot 1: Privacy Rate vs Layer
     ax1.plot(layers, privacy_rates, 'o-', linewidth=2, markersize=8, label='Privacy Rate')
-    ax1.axhline(y=0.7, color='r', linestyle='--', alpha=0.7, label='Target (70%)')
+    ax1.axhline(y=privacy_threshold, color='r', linestyle='--', alpha=0.7, label=f'Target ({privacy_threshold*100:.0f}%)')
     ax1.set_xlabel('Boundary Layer')
     ax1.set_ylabel('Privacy Rate')
     ax1.set_title('Privacy Preservation by Layer')
@@ -91,7 +92,8 @@ def plot_boundary_analysis(results: Dict[int, Dict],
 
 def plot_attack_comparison(dina_results: Dict, 
                           mla_results: Dict,
-                          save_path: Optional[str] = None) -> plt.Figure:
+                          save_path: Optional[str] = None,
+                          ssim_threshold: float = 0.3) -> plt.Figure:
     """
     Compare DINA and MLA attack results across layers.
     
@@ -119,7 +121,7 @@ def plot_attack_comparison(dina_results: Dict,
     # Plot 1: SSIM Comparison
     ax1.plot(common_layers, dina_ssim, 'o-', label='DINA', linewidth=2, markersize=8)
     ax1.plot(common_layers, mla_ssim, 's-', label='MLA', linewidth=2, markersize=8)
-    ax1.axhline(y=0.3, color='r', linestyle='--', alpha=0.7, label='Privacy Threshold')
+    ax1.axhline(y=ssim_threshold, color='r', linestyle='--', alpha=0.7, label='Privacy Threshold')
     ax1.set_xlabel('Boundary Layer')
     ax1.set_ylabel('Average SSIM')
     ax1.set_title('Attack Quality: SSIM Comparison')
@@ -150,7 +152,8 @@ def plot_attack_samples(original: torch.Tensor,
                        reconstructed: torch.Tensor,
                        ssim_scores: torch.Tensor,
                        n_samples: int = 8,
-                       save_path: Optional[str] = None) -> plt.Figure:
+                       save_path: Optional[str] = None,
+                       ssim_threshold: float = 0.3) -> plt.Figure:
     """
     Plot original vs reconstructed samples from attack.
     
@@ -189,7 +192,7 @@ def plot_attack_samples(original: torch.Tensor,
         axes[1, i].axis('off')
         
         # Color code based on privacy threshold
-        if ssim_scores[i] >= 0.3:
+        if ssim_scores[i] >= ssim_threshold:
             # Attack succeeded (privacy compromised)
             for ax in [axes[0, i], axes[1, i]]:
                 for spine in ax.spines.values():
@@ -205,7 +208,7 @@ def plot_attack_samples(original: torch.Tensor,
                     spine.set_visible(True)
     
     plt.suptitle('Attack Results: Original vs Reconstructed\n' +
-                 'Red border: Privacy compromised (SSIM ≥ 0.3), Green border: Privacy preserved',
+                 f'Red border: Privacy compromised (SSIM ≥ {ssim_threshold}), Green border: Privacy preserved',
                  fontsize=12)
     plt.tight_layout()
     
@@ -343,7 +346,7 @@ def create_results_table(results: Dict[int, Dict],
     for layer_idx, metrics in results.items():
         row = {
             'Boundary_Layer': layer_idx,
-            'Privacy_Rate': f"{metrics['privacy_rate']:.3f}",
+            'Privacy_Rate': f"{metrics['privacy_preserved_rate']:.3f}",
             'Attack_Success_Rate': f"{metrics['attack_success_rate']:.3f}",
             'Accuracy': f"{metrics['accuracy']:.3f}",
             'Avg_SSIM': f"{metrics['avg_ssim']:.3f}",
@@ -363,7 +366,9 @@ def create_results_table(results: Dict[int, Dict],
 
 def save_all_plots(results: Dict,
                   output_dir: str,
-                  experiment_name: str = "c2pi_experiment"):
+                  experiment_name: str = "c2pi_experiment",
+                  privacy_threshold: float = 0.7,
+                  ssim_threshold: float = 0.3):
     """
     Save all visualization plots to a directory.
     
@@ -371,6 +376,8 @@ def save_all_plots(results: Dict,
         results: Complete experimental results
         output_dir: Output directory for plots
         experiment_name: Name prefix for saved files
+        privacy_threshold: Privacy threshold for visualization
+        ssim_threshold: SSIM threshold for visualization
     """
     
     # Create output directory
@@ -382,7 +389,8 @@ def save_all_plots(results: Dict,
         plot_boundary_analysis(
             results['boundary_results'],
             save_path=output_path / f"{experiment_name}_boundary_analysis.png",
-            title=f"{experiment_name.replace('_', ' ').title()} - Boundary Analysis"
+            title=f"{experiment_name.replace('_', ' ').title()} - Boundary Analysis",
+            privacy_threshold=privacy_threshold
         )
     
     # Plot attack comparison if both attacks were used
@@ -390,7 +398,8 @@ def save_all_plots(results: Dict,
         plot_attack_comparison(
             results['dina_results'],
             results['mla_results'],
-            save_path=output_path / f"{experiment_name}_attack_comparison.png"
+            save_path=output_path / f"{experiment_name}_attack_comparison.png",
+            ssim_threshold=ssim_threshold
         )
     
     # Plot training histories

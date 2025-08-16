@@ -14,7 +14,8 @@ class C2PIConfig:
     """Configuration for C2PI boundary finding algorithm."""
     
     # Privacy Parameters
-    privacy_threshold: float = 0.3  # SSIM threshold for privacy
+    privacy_threshold: float = 0.9  # SSIM threshold for privacy
+    ssim_threshold: float = 0.3
     accuracy_threshold: float = 0.95  # Minimum accuracy requirement (as fraction of baseline)
     
     # Noise injection levels to test in Phase 2
