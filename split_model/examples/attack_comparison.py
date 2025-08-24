@@ -134,7 +134,7 @@ def run_mla_evaluation(model: nn.Module,
 def main():
     parser = argparse.ArgumentParser(description='C2PI Attack Comparison Study')
     parser.add_argument('--model', type=str, default='vgg11',
-                       choices=['vgg11', 'vgg16', 'resnet18'],
+                       choices=['vgg11', 'vgg16', 'resnet18', 'cnn5'],
                        help='Model architecture to use')
     parser.add_argument('--dataset', type=str, default='cifar10',
                        choices=['cifar10', 'cifar100'],
@@ -294,7 +294,9 @@ def main():
     save_all_plots(
         combined_results,
         output_dir=args.output_dir,
-        experiment_name=experiment_name
+        experiment_name=experiment_name,
+        privacy_threshold=config.privacy_threshold,
+        ssim_threshold=config.ssim_threshold
     )
     
     # Save detailed comparison

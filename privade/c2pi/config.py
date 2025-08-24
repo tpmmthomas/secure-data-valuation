@@ -16,10 +16,6 @@ class C2PIConfig:
     # Privacy Parameters
     privacy_threshold: float = 0.9  # SSIM threshold for privacy
     ssim_threshold: float = 0.3
-    accuracy_threshold: float = 0.95  # Minimum accuracy requirement (as fraction of baseline)
-    
-    # Noise injection levels to test in Phase 2
-    noise_levels: List[float] = field(default_factory=lambda: [0.1, 0.05, 0.01])
     
     # Training parameters
     batch_size: int = 64
@@ -46,8 +42,6 @@ class C2PIConfig:
         
         # Validate parameters
         assert 0.0 <= self.privacy_threshold <= 1.0, "Privacy threshold must be in [0, 1]"
-        assert 0.0 <= self.accuracy_threshold <= 1.0, "Accuracy threshold must be in [0, 1]"
-        assert all(level >= 0 for level in self.noise_levels), "Noise levels must be non-negative"
         assert self.batch_size > 0, "Batch size must be positive"
         assert self.learning_rate > 0, "Learning rate must be positive"
     

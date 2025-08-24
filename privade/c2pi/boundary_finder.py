@@ -88,32 +88,15 @@ class BoundaryFinder:
                 lr=attack_lr
             )
             
-            # Phase 2: Accuracy evaluation (if privacy is acceptable)
-            # Privacy is preserved if SSIM is below threshold (attack fails)
-            if privacy_metrics['privacy_preserved_rate'] >= (self.config.privacy_threshold):
-                accuracy_metrics = self._evaluate_accuracy_layer(
-                    layer_idx=layer_idx,
-                    test_loader=test_loader
-                )
-            else:
-                # Skip accuracy evaluation if privacy is compromised
-                accuracy_metrics = {
-                    'accuracy': 0.0,
-                    'accuracy_drop': 1.0,
-                    'passes_accuracy_threshold': False
-                }
-            
-            # Combine metrics
+            # Only use privacy metrics (no accuracy evaluation)
             layer_results = {
                 **privacy_metrics,
-                **accuracy_metrics,
                 'layer_idx': layer_idx
             }
             
             results[layer_idx] = layer_results
             
             print(f"  Privacy Preserved Rate: {privacy_metrics['privacy_preserved_rate']:.3f}")
-            print(f"  Accuracy: {accuracy_metrics['accuracy']:.3f}")
         
         return results
     
@@ -148,19 +131,32 @@ class BoundaryFinder:
                 
                 # Create simple config object with required attributes
                 class SimpleDINAConfig:
-                    def __init__(self, device, ssim_threshold):
-                        self.img_size = input_shape[-1]  # Assuming square images
-                        self.device = str(device)
-                        self.learning_rate = lr
-                        self.momentum = 0.9
-                        self.weight_decay = 1e-4
+                    def __init__(self, device, ssim_threshold, img_channels=3, img_size=32):
+                        self.device = device
+                        self.img_size = img_size
+                        self.img_channels = img_channels
                         self.dina_epochs = epochs
                         self.verbose = True
                         self.ssim_threshold = ssim_threshold
                         self.alpha_base = None  # Will use default coefficients
                         self.assert_shapes = False  # Disable shape assertions for simple config
+                        self.learning_rate = 1e-5
+                        
+                        # Set normalization parameters based on image channels
+                        if img_channels == 1:
+                            # MNIST-style grayscale
+                            self.norm_mean = [0.5]
+                            self.norm_std = [0.5]
+                        else:
+                            # RGB (CIFAR-10/ImageNet style)
+                            self.norm_mean = [0.485, 0.456, 0.406]
+                            self.norm_std = [0.229, 0.224, 0.225]
                 
-                dina_config = SimpleDINAConfig(self.device, self.config.ssim_threshold)
+                # Detect image channels and size from input
+                img_channels = input_shape[0]  # First dimension is channels
+                img_size = input_shape[1]  # Assume square images
+                
+                dina_config = SimpleDINAConfig(self.device, self.config.ssim_threshold, img_channels, img_size)
                 
                 # Use DINA attack - attack at the specified layer
                 attacker = DINAAttack(
@@ -204,51 +200,9 @@ class BoundaryFinder:
                 'num_samples': 0
             }
     
-    def _evaluate_accuracy_layer(self,
-                                layer_idx: int,
-                                test_loader: DataLoader) -> Dict:
-        """
-        Evaluate model accuracy with noise injection at specific layer.
-        
-        Args:
-            layer_idx: Index of layer to inject noise
-            test_loader: Test data loader
-        
-        Returns:
-            Dictionary with accuracy metrics
-        """
-        
-        # Calculate baseline accuracy
-        baseline_accuracy = calculate_accuracy(self.model, test_loader, self.device)
-        
-        # Test with different noise levels
-        best_accuracy = 0.0
-        best_noise_level = None
-        
-        for noise_level in self.config.noise_levels:
-            # TODO: Implement noise injection at specific layer
-            # For now, return baseline accuracy
-            noisy_accuracy = baseline_accuracy  # Placeholder
-            
-            if noisy_accuracy > best_accuracy:
-                best_accuracy = noisy_accuracy
-                best_noise_level = noise_level
-        
-        # Check if accuracy meets threshold
-        accuracy_threshold = self.config.accuracy_threshold * baseline_accuracy
-        passes_threshold = best_accuracy >= accuracy_threshold
-        
-        return {
-            'accuracy': best_accuracy,
-            'baseline_accuracy': baseline_accuracy,
-            'accuracy_drop': (baseline_accuracy - best_accuracy) / baseline_accuracy,
-            'best_noise_level': best_noise_level,
-            'passes_accuracy_threshold': passes_threshold
-        }
-    
     def select_boundary_layer(self, results: Dict[int, Dict]) -> Optional[int]:
         """
-        Select optimal boundary layer from evaluation results.
+        Select optimal boundary layer from evaluation results based only on privacy.
         
         Args:
             results: Results from find_optimal_boundary
@@ -257,24 +211,21 @@ class BoundaryFinder:
             Optimal boundary layer index, or None if no suitable layer found
         """
         
-        # Find layers that meet both privacy and accuracy criteria
+        # Find layers that meet privacy criteria
         suitable_layers = []
         
         for layer_idx, metrics in results.items():
             privacy_ok = metrics['privacy_preserved_rate'] >= (self.config.privacy_threshold)
-            accuracy_ok = metrics.get('passes_accuracy_threshold', False)
             
-            if privacy_ok and accuracy_ok:
-                suitable_layers.append(layer_idx)
+            if privacy_ok:
+                suitable_layers.append((layer_idx, metrics['privacy_preserved_rate']))
         
         if not suitable_layers:
-            print("Warning: No layers meet both privacy and accuracy criteria!")
             return None
         
-        # Select the earliest suitable layer (minimize crypto computation)
-        optimal_layer = min(suitable_layers)
-        
-        return optimal_layer
+        # Select layer with highest privacy preservation rate
+        suitable_layers.sort(key=lambda x: x[1], reverse=True)
+        return suitable_layers[0][0]
     
     def _get_num_classes(self, data_loader: DataLoader) -> int:
         """Get number of classes from data loader."""

@@ -1,0 +1,135 @@
+{
+  "experiment_config": {
+    "model": "cnn5",
+    "dataset": "cifar10",
+    "num_samples": 1000,
+    "batch_size": 64,
+    "attack_epochs": 50,
+    "baseline_accuracy": 0.101,
+    "privacy_threshold": 0.9,
+    "ssim_threshold": 0.3
+  },
+  "optimal_boundary": null,
+  "layer_results": {
+    "11": {
+      "privacy_preserved_rate": 0.0030000000000000027,
+      "attack_success_rate": 0.997,
+      "avg_ssim": 0.5912345051765442,
+      "max_ssim": 0.8523547053337097,
+      "std_ssim": 0.09939966350793839,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 11
+    },
+    "10": {
+      "privacy_preserved_rate": 0.0030000000000000027,
+      "attack_success_rate": 0.997,
+      "avg_ssim": 0.598638653755188,
+      "max_ssim": 0.8600627183914185,
+      "std_ssim": 0.09810037165880203,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 10
+    },
+    "8": {
+      "privacy_preserved_rate": 0.016000000000000014,
+      "attack_success_rate": 0.984,
+      "avg_ssim": 0.6730889678001404,
+      "max_ssim": 0.9143295288085938,
+      "std_ssim": 0.12047109007835388,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 8
+    },
+    "7": {
+      "privacy_preserved_rate": 0.0020000000000000018,
+      "attack_success_rate": 0.998,
+      "avg_ssim": 0.7163918018341064,
+      "max_ssim": 0.9159430265426636,
+      "std_ssim": 0.09085595607757568,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 7
+    },
+    "6": {
+      "privacy_preserved_rate": 0.0,
+      "attack_success_rate": 1.0,
+      "avg_ssim": 0.6888526678085327,
+      "max_ssim": 0.8851897120475769,
+      "std_ssim": 0.09159563481807709,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 6
+    },
+    "5": {
+      "privacy_preserved_rate": 0.0,
+      "attack_success_rate": 1.0,
+      "avg_ssim": 0.7548016905784607,
+      "max_ssim": 0.9278120398521423,
+      "std_ssim": 0.0838044062256813,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 5
+    },
+    "3": {
+      "privacy_preserved_rate": 0.0,
+      "attack_success_rate": 1.0,
+      "avg_ssim": 0.8381557464599609,
+      "max_ssim": 0.9591192007064819,
+      "std_ssim": 0.0714167058467865,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 3
+    },
+    "2": {
+      "privacy_preserved_rate": 0.0,
+      "attack_success_rate": 1.0,
+      "avg_ssim": 0.8962657451629639,
+      "max_ssim": 0.9762582182884216,
+      "std_ssim": 0.05355740711092949,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 2
+    },
+    "1": {
+      "privacy_preserved_rate": 0.0,
+      "attack_success_rate": 1.0,
+      "avg_ssim": 0.8732993602752686,
+      "max_ssim": 0.972434401512146,
+      "std_ssim": 0.06211996078491211,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 1
+    },
+    "0": {
+      "privacy_preserved_rate": 0.0,
+      "attack_success_rate": 1.0,
+      "avg_ssim": 0.956717312335968,
+      "max_ssim": 0.9923040866851807,
+      "std_ssim": 0.031054560095071793,
+      "num_samples": 1000,
+      "accuracy": 0.0,
+      "accuracy_drop": 1.0,
+      "passes_accuracy_threshold": false,
+      "layer_idx": 0
+    }
+  }
+}

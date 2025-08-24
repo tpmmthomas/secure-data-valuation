@@ -6,6 +6,12 @@ Changes:
 2A) Distillation compares block *outputs* to teacher taps (1-to-1 alignment).
 3) Explicit tap ordering: closest-to-split → earliest; α increases along that order.
 4) SSIM is computed on de-normalized images in [0,1] via self.denorm().
+5) Support for models without .features - automatically flattens any model architecture.
+
+Model Support:
+- VGG-style models with .features attribute
+- ResNet, DenseNet, and other models via recursive flattening of .children()
+- Custom architectures - automatically detects Conv2d and ReLU layers
 """
 
 import torch
@@ -62,7 +68,8 @@ class DINAInverseNetwork(nn.Module):
     def __init__(self,
                  channel_path: List[int],
                  spatial_path: List[Tuple[int, int]],
-                 img_size: Tuple[int, int]):
+                 img_size: Tuple[int, int],
+                 img_channels: int = 3):
         super().__init__()
         assert len(channel_path) == len(spatial_path)
         # IMPORTANT: channel_path/spatial_path are [split] + [tap_N, ..., tap_0]
@@ -74,11 +81,11 @@ class DINAInverseNetwork(nn.Module):
             blocks.append(InverseBlock(c_in, c_out, upsample_to=up_to, dilation=2))
         self.blocks = nn.ModuleList(blocks)
 
-        # Final image head maps from earliest-tap channels to RGB
+        # Final image head maps from earliest-tap channels to correct number of image channels
         self.img_head = nn.Sequential(
             nn.Conv2d(channel_path[-1], 32, 3, padding=1),
             nn.ReLU(inplace=True),
-            nn.Conv2d(32, 3, 1)
+            nn.Conv2d(32, img_channels, 1)  # Use img_channels instead of hardcoded 3
         )
         self.img_size = img_size
 
@@ -112,16 +119,52 @@ class DINAAttack:
         self.split_layer = split_layer
         self.device = torch.device(config.device)
 
-        # Defaults for de-normalization (ImageNet-style) if not provided
-        self.norm_mean = torch.tensor(
-            getattr(config, "norm_mean", [0.485, 0.456, 0.406]),
-            dtype=torch.float32, device=self.device
-        ).view(1, 3, 1, 1)
-        self.norm_std = torch.tensor(
-            getattr(config, "norm_std", [0.229, 0.224, 0.225]),
-            dtype=torch.float32, device=self.device
-        ).view(1, 3, 1, 1)
+        # Auto-detect image channels from config or use defaults
+        img_channels = getattr(config, "img_channels", 3)
+        
+        # Handle different normalization for different channel counts
+        if img_channels == 1:
+            # MNIST-style grayscale
+            default_mean = [0.5]
+            default_std = [0.5]
+        elif img_channels == 3:
+            # ImageNet/CIFAR-style RGB
+            default_mean = [0.485, 0.456, 0.406]
+            default_std = [0.229, 0.224, 0.225]
+        else:
+            # Unknown format - use neutral values
+            default_mean = [0.5] * img_channels
+            default_std = [0.5] * img_channels
 
+        # Get normalization parameters from config or use defaults
+        norm_mean = getattr(config, "norm_mean", default_mean)
+        norm_std = getattr(config, "norm_std", default_std)
+        
+        # Ensure we have the right number of channels
+        if len(norm_mean) != img_channels:
+            if len(norm_mean) == 1:
+                norm_mean = norm_mean * img_channels
+            elif len(norm_mean) == 3 and img_channels == 1:
+                norm_mean = [sum(norm_mean) / 3]  # Convert RGB to grayscale
+            else:
+                norm_mean = default_mean
+                
+        if len(norm_std) != img_channels:
+            if len(norm_std) == 1:
+                norm_std = norm_std * img_channels
+            elif len(norm_std) == 3 and img_channels == 1:
+                norm_std = [sum(norm_std) / 3]  # Convert RGB to grayscale
+            else:
+                norm_std = default_std
+
+        self.norm_mean = torch.tensor(
+            norm_mean, dtype=torch.float32, device=self.device
+        ).view(1, img_channels, 1, 1)
+        self.norm_std = torch.tensor(
+            norm_std, dtype=torch.float32, device=self.device
+        ).view(1, img_channels, 1, 1)
+        
+        self.img_channels = img_channels
         self.inverse_net = None
         self.distillation_points: List[int] = []
         self.loss_coefficients: List[float] = []
@@ -154,7 +197,8 @@ class DINAAttack:
         self.inverse_net = DINAInverseNetwork(
             channel_path=channel_path,
             spatial_path=spatial_path,
-            img_size=(self.config.img_size, self.config.img_size)
+            img_size=(self.config.img_size, self.config.img_size),
+            img_channels=self.img_channels
         ).to(self.device)
 
         self._setup_loss_coefficients(len(self.distillation_points))  # α schedule (3)
@@ -162,15 +206,50 @@ class DINAAttack:
         if self.config.verbose:
             print(f"    Loss coefficients: {self.loss_coefficients}")
 
+    def _flatten_model_layers(self, model: nn.Module) -> List[nn.Module]:
+        """
+        Flatten a model into a sequential list of layers.
+        Supports both .features attribute and general models via .children().
+        """
+        if hasattr(model, 'features') and isinstance(model.features, nn.Sequential):
+            # VGG-style models with .features
+            return list(model.features)
+        else:
+            # General models - flatten recursively
+            layers = []
+            
+            def _collect_layers(module: nn.Module):
+                # Get immediate children
+                children = list(module.children())
+                if not children:
+                    # Leaf module - add it directly
+                    layers.append(module)
+                else:
+                    # Has children - recurse
+                    for child in children:
+                        _collect_layers(child)
+            
+            _collect_layers(model)
+            return layers
+
     def _get_subblocks_and_taps(self) -> Tuple[List[List[int]], List[int]]:
         """
         Partition layers [0..split_layer] into sub-blocks ending with ReLU.
         Distillation tap for each sub-block is set to the *pre-ReLU conv* (middle point).
+        
+        If no explicit ReLU layers are found in the model, assumes every Conv2d
+        has an implicit ReLU activation and creates blocks accordingly.
         """
-        if not hasattr(self.target_model, 'features'):
-            raise NotImplementedError("DINA currently supports VGG-style models with .features")
+        # Get flattened layer list
+        self._model_layers = self._flatten_model_layers(self.target_model)
+        
+        if len(self._model_layers) <= self.split_layer:
+            raise ValueError(f"Split layer {self.split_layer} exceeds model depth {len(self._model_layers)}")
 
-        feats = self.target_model.features
+        # Check if we have any explicit ReLU layers in the split range
+        has_explicit_relu = any(isinstance(self._model_layers[i], nn.ReLU) 
+                               for i in range(self.split_layer + 1))
+
         subblocks: List[List[int]] = []
         current_block: List[int] = []
         taps: List[int] = []
@@ -178,24 +257,48 @@ class DINAAttack:
         def find_prev_conv(idx: int) -> Optional[int]:
             j = idx - 1
             while j >= 0:
-                if isinstance(feats[j], nn.Conv2d):
+                if isinstance(self._model_layers[j], nn.Conv2d):
                     return j
                 j -= 1
             return None
 
-        for i in range(self.split_layer + 1):
-            current_block.append(i)
-            if isinstance(feats[i], nn.ReLU):
-                subblocks.append(current_block)
-                # tap = conv immediately before this ReLU (middle point)
-                t = find_prev_conv(i)
-                if t is not None:
-                    taps.append(t)
-                current_block = []
+        if has_explicit_relu:
+            # Original logic: use explicit ReLU layers to define blocks
+            for i in range(self.split_layer + 1):
+                current_block.append(i)
+                if isinstance(self._model_layers[i], nn.ReLU):
+                    subblocks.append(current_block)
+                    # tap = conv immediately before this ReLU (middle point)
+                    t = find_prev_conv(i)
+                    if t is not None:
+                        taps.append(t)
+                    current_block = []
 
-        # If split doesn't end on ReLU, close the last fragment (no additional tap)
-        if current_block:
-            subblocks.append(current_block)
+            # If split doesn't end on ReLU, close the last fragment (no additional tap)
+            if current_block:
+                subblocks.append(current_block)
+        else:
+            # Fallback: assume every Conv2d has an implicit ReLU after it
+            conv_indices = [i for i in range(self.split_layer + 1) 
+                           if isinstance(self._model_layers[i], nn.Conv2d)]
+            
+            if not conv_indices:
+                # No Conv2d layers found - create one block with all layers
+                subblocks.append(list(range(self.split_layer + 1)))
+            else:
+                # Create blocks based on Conv2d positions
+                start_idx = 0
+                for conv_idx in conv_indices:
+                    # Block goes from start_idx to conv_idx (inclusive)
+                    block = list(range(start_idx, conv_idx + 1))
+                    subblocks.append(block)
+                    taps.append(conv_idx)  # The Conv2d itself is the tap point
+                    start_idx = conv_idx + 1
+                
+                # Add remaining layers after the last Conv2d (if any)
+                if start_idx <= self.split_layer:
+                    remaining_block = list(range(start_idx, self.split_layer + 1))
+                    subblocks.append(remaining_block)
 
         return subblocks, taps
 
@@ -205,14 +308,30 @@ class DINAAttack:
           path = [split] + [tap_near, tap_next, ..., tap_far]
         This yields #blocks == #taps and each block output matches one teacher tap.
         """
-        feats = self.target_model.features
-        dummy = torch.randn(1, 3, self.config.img_size, self.config.img_size, device=self.device)
+        # Use the flattened layers (should be already set by _get_subblocks_and_taps)
+        if not hasattr(self, '_model_layers'):
+            self._model_layers = self._flatten_model_layers(self.target_model)
+            
+        # Auto-detect input channels from model or use config
+        try:
+            # Try to get input channels from first layer
+            first_layer = self._model_layers[0]
+            if isinstance(first_layer, nn.Conv2d):
+                input_channels = first_layer.in_channels
+            else:
+                input_channels = self.img_channels
+        except:
+            input_channels = self.img_channels
+            
+        dummy = torch.randn(1, input_channels, self.config.img_size, self.config.img_size, device=self.device)
 
         # Collect split activation + taps (already ordered near→far)
         shapes: Dict[str, Tuple[int, Tuple[int,int]]] = {}
 
         x = dummy
-        for i, layer in enumerate(feats):
+        for i, layer in enumerate(self._model_layers):
+            if i > self.split_layer:
+                break
             x = layer(x)
             if i == self.split_layer:
                 shapes["split"] = (x.size(1), (x.size(2), x.size(3)))
@@ -253,8 +372,6 @@ class DINAAttack:
         optimizer = torch.optim.SGD(
             self.inverse_net.parameters(),
             lr=self.config.learning_rate,
-            momentum=self.config.momentum,
-            weight_decay=self.config.weight_decay
         )
 
         for epoch in range(self.config.dina_epochs):
@@ -295,12 +412,15 @@ class DINAAttack:
           split_activation
           teacher_taps: list of taps ordered near→far relative to split
         """
-        feats = self.target_model.features
+        # Use the flattened layers (should be already set by _get_subblocks_and_taps)
+        if not hasattr(self, '_model_layers'):
+            self._model_layers = self._flatten_model_layers(self.target_model)
+            
         taps_set = set(self.distillation_points)
         collected: Dict[int, torch.Tensor] = {}
         split_act = None
 
-        for i, layer in enumerate(feats):
+        for i, layer in enumerate(self._model_layers):
             x = layer(x)
             if i in taps_set:
                 collected[i] = x.detach()
@@ -361,6 +481,16 @@ class DINAAttack:
                 # (4) SSIM on [0,1]
                 rec_dn = self.denorm(reconstructed)
                 data_dn = self.denorm(data)
+                
+                # Handle channel mismatch for SSIM calculation
+                if rec_dn.shape[1] != data_dn.shape[1]:
+                    if data_dn.shape[1] == 1 and rec_dn.shape[1] == 3:
+                        # Convert RGB reconstruction to grayscale for MNIST
+                        rec_dn = 0.299 * rec_dn[:, 0:1] + 0.587 * rec_dn[:, 1:2] + 0.114 * rec_dn[:, 2:3]
+                    elif data_dn.shape[1] == 3 and rec_dn.shape[1] == 1:
+                        # Replicate grayscale to RGB
+                        rec_dn = rec_dn.repeat(1, 3, 1, 1)
+                
                 ssim_scores = calculate_ssim_batch(rec_dn, data_dn)
                 total_ssim += ssim_scores.sum().item()
                 num_samples += data.size(0)
@@ -379,6 +509,16 @@ class DINAAttack:
                 # (4) SSIM on [0,1]
                 rec_dn = self.denorm(reconstructed)
                 data_dn = self.denorm(data)
+                
+                # Handle channel mismatch for SSIM calculation
+                if rec_dn.shape[1] != data_dn.shape[1]:
+                    if data_dn.shape[1] == 1 and rec_dn.shape[1] == 3:
+                        # Convert RGB reconstruction to grayscale for MNIST
+                        rec_dn = 0.299 * rec_dn[:, 0:1] + 0.587 * rec_dn[:, 1:2] + 0.114 * rec_dn[:, 2:3]
+                    elif data_dn.shape[1] == 3 and rec_dn.shape[1] == 1:
+                        # Replicate grayscale to RGB
+                        rec_dn = rec_dn.repeat(1, 3, 1, 1)
+                
                 ssim_batch = calculate_ssim_batch(rec_dn, data_dn)
                 mse_batch = F.mse_loss(reconstructed, data, reduction='none').mean(dim=[1, 2, 3])
                 ssim_scores.extend(ssim_batch.detach().cpu().numpy())

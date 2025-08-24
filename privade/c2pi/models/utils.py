@@ -129,31 +129,37 @@ class CNN5(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
 
-def get_candidate_layers(model: nn.Module, only_conv_relu: bool = True) -> List[int]:
+def get_candidate_layers(model: nn.Module, only_conv_relu=True) -> List[int]:
     """
     Get candidate layer indices for boundary search.
     
     Args:
         model: Neural network model
-        only_conv_relu: If True, only consider Conv2d and ReLU layers
     
     Returns:
         List of layer indices in reverse order (tail to head)
     """
-    if not hasattr(model, 'features'):
+    if (not hasattr(model, 'features')) and (not hasattr(model, 'children')) :
         raise NotImplementedError("Currently only supports models with .features attribute")
     
     candidates = []
     
-    for i, layer in enumerate(model.features):
-        if only_conv_relu:
-            if isinstance(layer, (nn.Conv2d, nn.ReLU)):
-                candidates.append(i)
-        else:
-            # Include all layers except pooling (which don't change semantics much)
+    if hasattr(model, 'features'):
+        for i, layer in enumerate(model.features):
+            if i == 0 or i == len(model.features) - 1:
+                continue
             if not isinstance(layer, (nn.MaxPool2d, nn.AdaptiveAvgPool2d, nn.AvgPool2d)):
-                candidates.append(i)
-    
+                if (not only_conv_relu) or isinstance(layer, (nn.Conv2d, nn.ReLU)):
+                    candidates.append(i)
+    else:
+        children_list = list(model.children())
+        for i, layer in enumerate(children_list):
+            if i == 0 or i == len(children_list) - 1:
+                continue
+            if not isinstance(layer, (nn.MaxPool2d, nn.AdaptiveAvgPool2d, nn.AvgPool2d)):
+                if (not only_conv_relu) or isinstance(layer, (nn.Conv2d, nn.ReLU)):
+                    candidates.append(i)
+
     # Return in reverse order for Algorithm 1 (scan tail to head)
     return list(reversed(candidates))
 

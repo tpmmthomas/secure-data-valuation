@@ -22,9 +22,9 @@ import os
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from c2pi.boundary_finder import BoundaryFinder
-from c2pi.models.utils import get_model, identify_layer_candidates
+from c2pi.models.utils import get_model,  get_candidate_layers
 from c2pi.data.loaders import get_cifar10_loaders, get_cifar100_loaders, get_imagenet_loaders
-from c2pi.attacks.dina import DINAAttacker
+from c2pi.attacks.dina import DINAAttack
 from c2pi.utils.visualization import plot_boundary_analysis, save_all_plots
 from c2pi.config import C2PIConfig
 from c2pi.utils.metrics import calculate_accuracy
@@ -33,7 +33,7 @@ from c2pi.utils.metrics import calculate_accuracy
 def main():
     parser = argparse.ArgumentParser(description='C2PI Boundary Finding Example')
     parser.add_argument('--model', type=str, default='vgg16',
-                       choices=['vgg16','vgg19','resnet50', 'alexnet'],
+                       choices=['vgg16','vgg19','resnet50', 'alexnet', 'cnn5'],
                        help='Model architecture to use')
     parser.add_argument('--dataset', type=str, default='cifar10',
                        choices=['cifar10', 'cifar100', 'imagenet'],
@@ -65,8 +65,9 @@ def main():
     
     # Load configuration
     config = C2PIConfig(
-        privacy_threshold=0.3,
-        accuracy_threshold=0.95,
+        privacy_threshold=0.9,
+        ssim_threshold=0.3,
+        accuracy_threshold=0.0,
         noise_levels=[0.1, 0.05, 0.01],
         batch_size=args.batch_size,
         device=device
@@ -120,7 +121,7 @@ def main():
     )
     
     # Configure attack parameters
-    attack_epochs = 10 if args.quick else 50
+    attack_epochs = 10 
     attack_lr = 1e-3
     
     print(f"Starting boundary analysis (attack epochs: {attack_epochs})...")
@@ -144,7 +145,7 @@ def main():
         for layer_idx in sorted(results.keys()):
             metrics = results[layer_idx]
             print(f"\nLayer {layer_idx}:")
-            print(f"  Privacy Rate: {metrics['privacy_rate']:.3f}")
+            print(f"  Privacy Preserve Rate: {metrics['privacy_preserved_rate']:.3f}")
             print(f"  Attack Success: {metrics['attack_success_rate']:.3f}")
             print(f"  Accuracy: {metrics['accuracy']:.3f}")
             print(f"  Avg SSIM: {metrics['avg_ssim']:.3f}")
@@ -158,7 +159,7 @@ def main():
         
         if optimal_layer is not None:
             opt_metrics = results[optimal_layer]
-            print(f"Privacy Rate: {opt_metrics['privacy_rate']:.3f}")
+            print(f"Privacy Rate: {opt_metrics['privacy_preserved_rate']:.3f}")
             print(f"Accuracy: {opt_metrics['accuracy']:.3f}")
             print(f"Attack Success: {opt_metrics['attack_success_rate']:.3f}")
         else:
@@ -175,7 +176,9 @@ def main():
         save_all_plots(
             {'boundary_results': results},
             output_dir=args.output_dir,
-            experiment_name=experiment_name
+            experiment_name=experiment_name,
+            privacy_threshold=config.privacy_threshold,
+            ssim_threshold=config.ssim_threshold
         )
         
         # Save detailed results
@@ -183,10 +186,25 @@ def main():
         results_file = os.path.join(args.output_dir, f"{experiment_name}_detailed_results.json")
         
         # Convert tensors to lists for JSON serialization
+        import numpy as np
+        
+        def convert_to_json_serializable(obj):
+            """Convert various data types to JSON serializable format."""
+            if torch.is_tensor(obj):
+                return obj.tolist()
+            elif isinstance(obj, np.ndarray):
+                return obj.tolist()
+            elif isinstance(obj, (np.float32, np.float64, np.int32, np.int64)):
+                return float(obj) if 'float' in str(type(obj)) else int(obj)
+            elif isinstance(obj, (int, float)):
+                return obj
+            else:
+                return obj
+        
         json_results = {}
         for layer_idx, metrics in results.items():
             json_results[str(layer_idx)] = {
-                k: v.tolist() if torch.is_tensor(v) else float(v) if isinstance(v, (int, float)) else v
+                k: convert_to_json_serializable(v)
                 for k, v in metrics.items()
             }
         
@@ -198,7 +216,9 @@ def main():
                     'num_samples': args.num_samples,
                     'batch_size': args.batch_size,
                     'attack_epochs': attack_epochs,
-                    'baseline_accuracy': float(baseline_accuracy)
+                    'baseline_accuracy': float(baseline_accuracy),
+                    'privacy_threshold': config.privacy_threshold,
+                    'ssim_threshold': config.ssim_threshold
                 },
                 'optimal_boundary': int(optimal_layer) if optimal_layer is not None else None,
                 'layer_results': json_results
