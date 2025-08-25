@@ -1,9 +1,6 @@
 from valuation_alg import * 
-from data import split_dataset, add_noise, create_challenging_batches_with_skew
-import sys
-sys.path.append('..')  # Add privade directory to path
-from privade.data import get_dataset
-from privade.models import get_model
+from data import get_dataset, split_dataset, add_noise, create_challenging_batches_with_skew
+from models import get_model
 import torch
 import torch.optim as optim
 import torch.nn.functional as F
@@ -17,18 +14,17 @@ import os
 from torch.utils.data import DataLoader
 
 # Set desired batch size for training and evaluation.
-BATCH_SIZE = 10  # Further increased for better gradient estimates
-DATASET = "cifar100"  # Stick with CIFAR10 (easier than CIFAR100)
-MODEL = "vgg16"  # ResNet20 is better than VGG8 for this task
-NAME = "formal1"
-NUM_classes = 100
+BATCH_SIZE = 10
+DATASET = "cifar10"
+MODEL = "resnet18"
+NAME = "og"
 
 for seed in range(21,26):
 
     random.seed(seed)
     torch.manual_seed(seed)
     
-    LR = 1e-5  # Increased learning rate for better convergence
+    LR = 1e-5
 
     def fprint(msg):
         print(msg)
@@ -41,79 +37,22 @@ for seed in range(21,26):
 
     # Load dataset and split.
     dataset = get_dataset(DATASET)
-    print(len(dataset))
-    pretrain_size = 300  # Increased from 1000 for better initial training
+    pretrain_size = 100
     num_batch = 15
-    per_batch = 200
+    per_batch = 300
     pool_size =  num_batch * per_batch
-    test_size = 10000
+    test_size = 3000
     train_data, remain_data = split_dataset(dataset, pretrain_size,  pool_size + test_size + 10000)
     test_data, remain_data = split_dataset(remain_data, test_size, pool_size + 10000)
-    model = torch.hub.load("chenyaofo/pytorch-cifar-models", "cifar100_vgg16_bn", pretrained=True).cuda()
-    
-    # Reinitialize final layers to reduce pretrained advantage
-    def reinitialize_final_layers(model, num_layers=2):
-        """
-        Reinitialize the final layers of a pretrained model.
-        
-        Args:
-            model: The pretrained model
-            num_layers: Number of final layers to reinitialize (default: 2)
-        """
-        # Get all modules as a list
-        modules = list(model.modules())
-        
-        # Count linear/conv layers from the end
-        layer_count = 0
-        for module in reversed(modules):
-            if isinstance(module, (nn.Linear, nn.Conv2d)):
-                layer_count += 1
-                if layer_count <= num_layers:
-                    if isinstance(module, nn.Linear):
-                        # Xavier/Glorot initialization for linear layers
-                        nn.init.xavier_uniform_(module.weight)
-                        if module.bias is not None:
-                            nn.init.constant_(module.bias, 0)
-                        print(f"Reinitialized Linear layer: {module}")
-                    elif isinstance(module, nn.Conv2d):
-                        # Kaiming/He initialization for conv layers
-                        nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
-                        if module.bias is not None:
-                            nn.init.constant_(module.bias, 0)
-                        print(f"Reinitialized Conv2d layer: {module}")
-                        
-        # Also reinitialize BatchNorm layers in the final block if present
-        bn_count = 0
-        for module in reversed(modules):
-            if isinstance(module, nn.BatchNorm2d) and bn_count < num_layers:
-                nn.init.constant_(module.weight, 1)
-                nn.init.constant_(module.bias, 0)
-                bn_count += 1
-                print(f"Reinitialized BatchNorm2d layer: {module}")
-    
-    # Apply reinitialization to reduce pretrained advantage
-    reinitialize_final_layers(model, num_layers=4)  # Reinitialize last 2 layers
-    
-    # Additional targeted reinitialization for ResNet final classifier
-    def reinitialize_classifier(model):
-        """Specifically reinitialize the final classifier layer"""
-        for name, module in model.named_modules():
-            if 'fc' in name.lower() or 'linear' in name.lower() or 'classifier' in name.lower():
-                if isinstance(module, nn.Linear):
-                    nn.init.xavier_uniform_(module.weight)
-                    if module.bias is not None:
-                        nn.init.constant_(module.bias, 0)
-                    print(f"Reinitialized classifier: {name} -> {module}")
-    
-    reinitialize_classifier(model)
+    model = get_model(MODEL).cuda()
 
     random.shuffle(remain_data)
     batches, _ = create_challenging_batches_with_skew(
         dataset=remain_data,
         num_batch=num_batch,
         per_batch=per_batch,
-        num_classes=NUM_classes,   # CIFAR-10 OR MNIST
-        degrade_prob=0.7
+        num_classes=10,   # CIFAR-10 OR MNIST
+        degrade_prob=0.6
     )    
     assert len(batches) == num_batch
     assert len(test_data) == test_size
@@ -133,14 +72,15 @@ for seed in range(21,26):
     # Train the model on the initial train_data (with noise) using a DataLoader.
     # train_data = add_noise(train_data, 0.5)
     train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
-    optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=1e-4)  # Added weight decay
-    scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=30)  # Added LR scheduling
+    optimizer = optim.Adam(model.parameters(), lr=LR)
     num_epochs = 10
 
     for epoch in range(num_epochs):
         model.train()
-        # REMOVED: BatchNorm eval mode setting - this was breaking training!
-        # Setting BatchNorm to eval during training prevents proper learning
+        # Optionally set BatchNorm layers to eval mode.
+        for m in model.modules():
+            if isinstance(m, nn.BatchNorm2d):
+                m.eval()
         epoch_loss = 0.0
         for data, label in train_loader:
             data, label = data.cuda(), label.cuda()
@@ -149,11 +89,9 @@ for seed in range(21,26):
             loss = F.cross_entropy(output, label)
             loss.backward()
             optimizer.step()
-            scheduler.step()  # Update learning rate
             epoch_loss += loss.item() * data.size(0)
         avg_loss = epoch_loss / len(train_data)
         print(f"Epoch {epoch+1}/{num_epochs}, Loss: {avg_loss:.4f}")
-    
 
     # Evaluate on test set using a DataLoader.
     model.eval()
@@ -168,20 +106,21 @@ for seed in range(21,26):
             total_samples += label.size(0)
             correct += (predicted == label).sum().item()
     accuracy_init = correct / total_samples
-    print("IInitial accuracy: ", accuracy_init)
 
     # Save the current model state for resetting between valuation methods.
     current_model_dict = copy.deepcopy(model.state_dict())
     
     # The train_and_evaluate function using DataLoader.
     def train_and_evaluate(model, train_data, test_data):
-        optimizer = optim.Adam(model.parameters(), lr=LR, weight_decay=1e-4)  # Added weight decay
-        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=5, gamma=0.7)  # Less aggressive decay
-        num_epochs = 10  # Increased from 10 for better convergence
+        optimizer = optim.Adam(model.parameters(), lr=LR)
+        scheduler = optim.lr_scheduler.StepLR(optimizer, step_size=1, gamma=0.99)
+        num_epochs = 10
         train_loader = DataLoader(train_data, batch_size=BATCH_SIZE, shuffle=True)
         for epoch in range(num_epochs):
             model.train()
-            # REMOVED: BatchNorm eval mode setting - this was breaking training!
+            for m in model.modules():
+                if isinstance(m, nn.BatchNorm2d):
+                    m.eval()
             for data, label in train_loader:
                 data, label = data.cuda(), label.cuda()
                 optimizer.zero_grad()
@@ -189,7 +128,7 @@ for seed in range(21,26):
                 loss = F.cross_entropy(output, label)
                 loss.backward()
                 optimizer.step()
-            scheduler.step()  # Update learning rate after each epoch, not each batch
+                scheduler.step()
         model.eval()
         correct = 0
         total_samples = 0
@@ -214,14 +153,7 @@ for seed in range(21,26):
         acc_sequence = [accuracy_init]
         # Define loss function locally.
         loss_fn = nn.CrossEntropyLoss()
-        # Fix numpy 2.0 deprecation warning by being explicit about tensor conversion
-        data_alice = []
-        for x in train_data:
-            if hasattr(x[0], 'numpy'):  # PyTorch tensor
-                data_alice.append(x[0].detach().cpu().numpy())
-            else:  # Already numpy array or other
-                data_alice.append(np.asarray(x[0]))
-        
+        data_alice = [np.array(x[0]) for x in train_data]
         # Start with the initial training data.
         all_train_data_method = train_data.copy()
         # Determine extra arguments (if any) based on the method.
@@ -232,15 +164,8 @@ for seed in range(21,26):
             for i in range(len(batches)):
                 if i in selected_batch_sequence:
                     continue
-                # Fix numpy 2.0 deprecation warning by being explicit about tensor conversion
-                data_batch = []
-                for x in batches[i]:
-                    if hasattr(x[0], 'numpy'):  # PyTorch tensor
-                        data_batch.append(x[0].detach().cpu().numpy())
-                    else:  # Already numpy array or other
-                        data_batch.append(np.asarray(x[0]))
-                
-                label_batch = [np.eye(NUM_classes)[x[1]] for x in batches[i]]
+                data_batch = [np.array(x[0]) for x in batches[i]]
+                label_batch = [np.eye(10)[x[1]] for x in batches[i]]
                 val = ValuationClass(model, data_batch, label_batch, data_alice, *extra_args)
                 dv = val.data_value()
                 if best_score is None or dv > best_score:
@@ -253,14 +178,7 @@ for seed in range(21,26):
             # Evaluate the model on the test set.
             acc = train_and_evaluate(model, all_train_data_method, test_data)
             # Update data_alice with the newly added batch.
-            # Fix numpy 2.0 deprecation warning by being explicit about tensor conversion
-            batch_data_alice = []
-            for x in batches[best_batch]:
-                if hasattr(x[0], 'numpy'):  # PyTorch tensor
-                    batch_data_alice.append(x[0].detach().cpu().numpy())
-                else:  # Already numpy array or other
-                    batch_data_alice.append(np.asarray(x[0]))
-            data_alice += batch_data_alice
+            data_alice += [np.array(x[0]) for x in batches[best_batch]]
             acc_sequence.append(acc)
         fprint(f"{method_name} Selected batch sequence:" + str(selected_batch_sequence))
         fprint(f"{method_name} Accuracy sequence:" + str(acc_sequence))
