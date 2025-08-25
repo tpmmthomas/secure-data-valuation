@@ -106,7 +106,7 @@ class BoundaryFinder:
                                test_loader: DataLoader,
                                input_shape: Tuple[int, ...],
                                attack_type: str = 'dina',
-                               epochs: int = 50,
+                               epochs: int = 20,
                                lr: float = 1e-3) -> Dict:
         """
         Evaluate privacy leakage at a specific layer using attacks.
@@ -186,10 +186,14 @@ class BoundaryFinder:
                 return attack_results
             
             else:
+                import traceback
+                print(traceback.format_exc())
                 raise ValueError(f"Unsupported attack type: {attack_type}")
                 
         except Exception as e:
             print(f"    Error in privacy evaluation: {e}")
+            import traceback
+            print(traceback.format_exc())
             # Return safe defaults if attack fails
             return {
                 'privacy_preserved_rate': 1.0,  # Assume privacy is preserved

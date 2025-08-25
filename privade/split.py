@@ -1,11 +1,7 @@
 """
 Model splitting functionality for PrivaDE.
 
-This module implements the C2PI (Crypto-Clear Privacy-preservindef privacy_success_rate(ssim_scores: List[float], threshold: float) -> float:
-    # Import the implementation from utils
-    from .split_utils.metrics import privacy_success_rate as psr_impl
-    return psr_impl(ssim_scores, threshold)
-
+This module implements the C2PI (Crypto-Clear Privacy-preserving Inference) algorithm
 for finding optimal boundary layers in neural networks for split inference with privacy guarantees.
 It uses the DINA (Distillation-based Inverse Network Attack) to evaluate privacy.
 """
@@ -24,6 +20,61 @@ from .c2pi.boundary_finder import BoundaryFinder
 from .c2pi.models.utils import get_model,  get_candidate_layers
 from .c2pi.config import C2PIConfig
 from .c2pi.utils.metrics import calculate_accuracy
+
+ACTIVATION_NAMES = {
+    'ReLU','LeakyReLU','ELU','SELU','GELU','Tanh','Sigmoid',
+    'Softmax','LogSoftmax','ReLU6','PReLU','Square'
+}
+
+def is_activation(layer: nn.Module) -> bool:
+    return layer._get_name() in ACTIVATION_NAMES
+
+def get_first_activation_layer(model: nn.Module) -> int:
+    """
+    Find the index of the first activation layer in a model.
+    
+    Args:
+        model: The neural network model
+        
+    Returns:
+        Index of the first activation layer (ReLU, LeakyReLU, ELU, etc.)
+        Returns 0 if no activation layer is found
+    """
+    
+    # If model is Sequential, check its children directly
+    if isinstance(model, nn.Sequential):
+        layers = list(model.children())
+        for i, layer in enumerate(layers):
+            if is_activation(layer):
+                print(f"Found first activation layer at index {i}: {type(layer).__name__}")
+                return i
+    else:
+        # For non-Sequential models, we need to traverse the structure
+        # This is more complex for models with residual connections, etc.
+        # For now, we'll flatten as much as possible
+        def get_all_modules(module):
+            """Recursively get all modules in order."""
+            modules = []
+            for child in module.children():
+                if isinstance(child, nn.Sequential):
+                    # Flatten Sequential containers
+                    modules.extend(get_all_modules(child))
+                elif len(list(child.children())) == 0:
+                    # Leaf module
+                    modules.append(child)
+                else:
+                    # Intermediate module with children
+                    modules.extend(get_all_modules(child))
+            return modules
+        
+        all_modules = get_all_modules(model)
+        for i, layer in enumerate(all_modules):
+            if is_activation(layer):
+                print(f"Found first activation layer at index {i}: {type(layer).__name__}")
+                return i
+    
+    print("Warning: No activation layer found in model. Using index 0 as fallback.")
+    return 0
 
 
 
@@ -55,11 +106,16 @@ def split_model(data_loader: DataLoader,
         - 'attack_success_rate': Attack success rate at optimal layer
     """
     
+    #Check img size
+    img_size = next(iter(data_loader))[0].shape[-1]
+    
+    
     # Use default config if none provided
     if config is None:
         config = C2PIConfig(
             privacy_threshold=0.6,
             ssim_threshold=0.3,
+            img_size=img_size,
             batch_size=32,
             device=torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     )
@@ -69,11 +125,16 @@ def split_model(data_loader: DataLoader,
     model.eval()
     
     # Find the first activation layer for model_A split
-    first_activation_layer = 0
+    first_activation_layer = get_first_activation_layer(model)
+    print("First activation layer: ", first_activation_layer)
     
     # Identify candidate layers for model_B/model_C boundary (starting after first activation)
     print("Identifying candidate layers for B/C boundary...")
     layer_candidates = get_candidate_layers(model, only_conv_relu=True)
+    print("Candidates", layer_candidates)
+    
+    # Filter candidates to only include layers after the first activation
+    layer_candidates = [idx for idx in layer_candidates if idx > first_activation_layer]
     
     print(f"Found {len(layer_candidates)} candidate layers: {layer_candidates}")
     
@@ -131,7 +192,41 @@ def split_model(data_loader: DataLoader,
         print(f"Using layer {optimal_layer} as fallback.")
     
     # Create three split models
-    layers = list(model.children())
+    # First, flatten the model into individual layers (same logic as get_candidate_layers)
+    def flatten_model(module):
+        """Flatten a model into a sequential list of layers."""
+        if isinstance(module, nn.Sequential):
+            return list(module.children())
+        else:
+            # For non-Sequential models, collect all child modules
+            layers = []
+            def collect_layers(m):
+                children = list(m.children())
+                if not children:
+                    # Leaf module
+                    layers.append(m)
+                else:
+                    # Has children - recurse
+                    for child in children:
+                        if isinstance(child, nn.Sequential):
+                            # Flatten Sequential containers
+                            layers.extend(child.children())
+                        else:
+                            collect_layers(child)
+            collect_layers(module)
+            return layers
+    
+    layers = flatten_model(model)
+    
+    print(f"\nFlattened model has {len(layers)} layers:")
+    for i, layer in enumerate(layers):
+        print(f"  {i}: {type(layer).__name__}")
+    
+    # Verify that our layer indices make sense
+    if first_activation_layer >= len(layers):
+        raise ValueError(f"First activation layer index {first_activation_layer} exceeds model length {len(layers)}")
+    if optimal_layer >= len(layers):
+        raise ValueError(f"Optimal layer index {optimal_layer} exceeds model length {len(layers)}")
     
     # Model A: From start to first activation (inclusive)
     model_A_layers = layers[:first_activation_layer + 1]
@@ -163,11 +258,25 @@ def split_model(data_loader: DataLoader,
     }
     
     print(f"\nThree-Model Split Statistics:")
-    print(f"Model A ends at layer: {first_activation_layer}")
-    print(f"Model B starts at layer: {first_activation_layer + 1}, ends at layer: {optimal_layer}")
-    print(f"Model C starts at layer: {optimal_layer + 1}")
+    print(f"Total layers: {len(layers)}")
+    print(f"Model A ends at layer: {first_activation_layer} ({type(layers[first_activation_layer]).__name__})")
+    print(f"Model B: layers {first_activation_layer + 1} to {optimal_layer} ({len(model_B_layers)} layers)")
+    print(f"Model C: layers {optimal_layer + 1} to {len(layers)-1} ({len(model_C_layers)} layers)")
     print(f"Privacy Rate: {opt_metrics['privacy_preserved_rate']:.3f}")
     print(f"Attack Success: {opt_metrics['attack_success_rate']:.3f}")
     print(f"Average SSIM: {opt_metrics['avg_ssim']:.3f}")
+    
+    # Detailed split breakdown
+    print(f"\nModel A layers ({len(model_A_layers)}):")
+    for i, layer in enumerate(model_A_layers):
+        print(f"  {i}: {type(layer).__name__}")
+    
+    print(f"\nModel B layers ({len(model_B_layers)}):")
+    for i, layer in enumerate(model_B_layers):
+        print(f"  {i}: {type(layer).__name__}")
+    
+    print(f"\nModel C layers ({len(model_C_layers)}):")
+    for i, layer in enumerate(model_C_layers):
+        print(f"  {i}: {type(layer).__name__}")
     
     return model_A, model_B, model_C, split_statistics

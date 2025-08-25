@@ -48,15 +48,119 @@ class InverseBlock(nn.Module):
         super().__init__()
         self.res = ResBlock(c_in)
         self.dil = nn.Conv2d(c_in, c_out, 3, padding=dilation, dilation=dilation)
-        self.bn = nn.BatchNorm2d(c_out)
         self.upsample_to = upsample_to
 
     def forward(self, x):
         x = self.res(x)
-        x = F.relu(self.bn(self.dil(x)))
+        x = self.dil(x)
         if self.upsample_to is not None:
-            x = F.interpolate(x, size=self.upsample_to, mode="nearest")
+            x = F.interpolate(x, size=self.upsample_to, mode="bilinear", align_corners=False)
         return x
+
+
+class InverseLinearBlock(nn.Module):
+    """Inverse block for linear layers: tries to reconstruct previous linear layer features."""
+    def __init__(self, in_features: int, out_features: int, use_relu: bool = True):
+        super().__init__()
+        self.linear = nn.Linear(in_features, out_features)
+        self.use_relu = use_relu
+        self.dropout = nn.Dropout(0.1)  # Small dropout for regularization
+        
+    def forward(self, x):
+        x = self.linear(x)
+        if self.use_relu:
+            x = F.relu(x)
+        return self.dropout(x)
+
+
+class DINAInverseLinearNetwork(nn.Module):
+    """
+    DINA inverse network for models with linear layers.
+    Reconstructs feature vectors through a series of inverse linear transformations.
+    """
+    def __init__(self,
+                 feature_path: List[int],
+                 img_size: Tuple[int, int],
+                 img_channels: int = 3,
+                 final_spatial_size: Optional[Tuple[int, int]] = None):
+        super().__init__()
+        assert len(feature_path) >= 2
+        
+        # Build inverse linear blocks
+        blocks = []
+        for k in range(len(feature_path) - 1):
+            in_features, out_features = feature_path[k], feature_path[k + 1]
+            use_relu = k < len(feature_path) - 2  # No ReLU on last block
+            blocks.append(InverseLinearBlock(in_features, out_features, use_relu))
+        self.blocks = nn.ModuleList(blocks)
+        
+        # Determine reconstruction strategy
+        self.final_features = feature_path[-1]
+        self.img_size = img_size
+        self.img_channels = img_channels
+        
+        # If we have spatial info, reshape and use conv layers for final reconstruction
+        if final_spatial_size is not None:
+            self.final_spatial_size = final_spatial_size
+            expected_features = img_channels * final_spatial_size[0] * final_spatial_size[1]
+            
+            if self.final_features != expected_features:
+                # Add a projection layer to match expected size
+                self.feature_projection = nn.Linear(self.final_features, expected_features)
+            else:
+                self.feature_projection = nn.Identity()
+                
+            # Convolutional layers for spatial reconstruction
+            conv_channels = max(32, img_channels * 4)
+            self.spatial_head = nn.Sequential(
+                nn.Conv2d(img_channels, conv_channels, 3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(conv_channels, conv_channels // 2, 3, padding=1),
+                nn.ReLU(inplace=True),
+                nn.Conv2d(conv_channels // 2, img_channels, 1)
+            )
+        else:
+            # Pure linear reconstruction - try to estimate spatial size
+            estimated_spatial = int(np.sqrt(self.final_features // img_channels))
+            if estimated_spatial * estimated_spatial * img_channels == self.final_features:
+                self.final_spatial_size = (estimated_spatial, estimated_spatial)
+                self.feature_projection = nn.Identity()
+                self.spatial_head = nn.Identity()
+            else:
+                # Fallback: project to reasonable spatial size
+                target_spatial = 7  # 7x7 is common for small feature maps
+                target_features = img_channels * target_spatial * target_spatial
+                self.final_spatial_size = (target_spatial, target_spatial)
+                self.feature_projection = nn.Linear(self.final_features, target_features)
+                self.spatial_head = nn.Identity()
+
+    def forward(self, z):
+        """
+        Returns:
+            reconstructed_img: Final reconstructed image
+            student_block_outputs: List of block outputs for distillation
+        """
+        student_block_outputs = []
+        
+        # Pass through inverse linear blocks
+        for block in self.blocks:
+            z = block(z)
+            student_block_outputs.append(z)
+        
+        # Reconstruct image
+        z = self.feature_projection(z)
+        
+        # Reshape to spatial format
+        batch_size = z.size(0)
+        z = z.view(batch_size, self.img_channels, self.final_spatial_size[0], self.final_spatial_size[1])
+        
+        # Apply spatial head if needed
+        z = self.spatial_head(z)
+        
+        # Interpolate to target image size
+        out = F.interpolate(z, size=self.img_size, mode="bilinear", align_corners=False)
+        
+        return out, student_block_outputs
 
 
 class DINAInverseNetwork(nn.Module):
@@ -118,6 +222,9 @@ class DINAAttack:
         self.config = config
         self.split_layer = split_layer
         self.device = torch.device(config.device)
+        
+        # Ensure target model is on the correct device
+        self.target_model = self.target_model.to(self.device)
 
         # Auto-detect image channels from config or use defaults
         img_channels = getattr(config, "img_channels", 3)
@@ -188,56 +295,149 @@ class DINAAttack:
             print(f"    Distillation taps (pre-ReLU conv), ordered near→far: {self.distillation_points}")
             print(f"    Sub-blocks: {subblocks}")
 
-        channel_path, spatial_path = self._probe_network_shapes()
+        # Detect if we have linear layers in the distillation path
+        self.has_linear_layers = self._detect_linear_layers()
+        
+        if self.has_linear_layers:
+            feature_path, final_spatial_size = self._probe_linear_network_shapes()
+            
+            if self.config.verbose:
+                print(f"    Using linear inverse network")
+                print(f"    Feature path: {feature_path}")
+                print(f"    Final spatial size: {final_spatial_size}")
+                
+            self.inverse_net = DINAInverseLinearNetwork(
+                feature_path=feature_path,
+                img_size=(self.config.img_size, self.config.img_size),
+                img_channels=self.img_channels,
+                final_spatial_size=final_spatial_size
+            ).to(self.device)
+        else:
+            channel_path, spatial_path = self._probe_network_shapes()
 
-        if self.config.verbose:
-            print(f"    Channel path: {channel_path}")
-            print(f"    Spatial path: {spatial_path}")
+            if self.config.verbose:
+                print(f"    Using convolutional inverse network")
+                print(f"    Channel path: {channel_path}")
+                print(f"    Spatial path: {spatial_path}")
 
-        self.inverse_net = DINAInverseNetwork(
-            channel_path=channel_path,
-            spatial_path=spatial_path,
-            img_size=(self.config.img_size, self.config.img_size),
-            img_channels=self.img_channels
-        ).to(self.device)
+            self.inverse_net = DINAInverseNetwork(
+                channel_path=channel_path,
+                spatial_path=spatial_path,
+                img_size=(self.config.img_size, self.config.img_size),
+                img_channels=self.img_channels
+            ).to(self.device)
 
         self._setup_loss_coefficients(len(self.distillation_points))  # α schedule (3)
 
         if self.config.verbose:
             print(f"    Loss coefficients: {self.loss_coefficients}")
 
+    def _detect_linear_layers(self) -> bool:
+        """Detect if the distillation path includes linear layers."""
+        if not hasattr(self, '_model_layers'):
+            self._model_layers = self._flatten_model_layers(self.target_model)
+            
+        for i in range(self.split_layer + 1):
+            if i < len(self._model_layers) and isinstance(self._model_layers[i], nn.Linear):
+                return True
+        return False
+
+    def _probe_linear_network_shapes(self) -> Tuple[List[int], Optional[Tuple[int, int]]]:
+        """
+        Build feature paths for linear layers.
+        Returns: (feature_path, final_spatial_size)
+        """
+        if not hasattr(self, '_model_layers'):
+            self._model_layers = self._flatten_model_layers(self.target_model)
+            
+        # Auto-detect input size
+        try:
+            first_layer = self._model_layers[0]
+            if isinstance(first_layer, nn.Conv2d):
+                input_channels = first_layer.in_channels
+                dummy = torch.randn(1, input_channels, self.config.img_size, self.config.img_size, device=self.device)
+            elif isinstance(first_layer, nn.Linear):
+                input_features = first_layer.in_features
+                dummy = torch.randn(1, input_features, device=self.device)
+            else:
+                # Fallback
+                dummy = torch.randn(1, self.img_channels, self.config.img_size, self.config.img_size, device=self.device)
+        except:
+            dummy = torch.randn(1, self.img_channels, self.config.img_size, self.config.img_size, device=self.device)
+
+        # Track shapes through the network
+        shapes: Dict[str, int] = {}
+        final_spatial_size = None
+        
+        x = dummy
+        last_spatial_shape = None
+        
+        for i, layer in enumerate(self._model_layers):
+            if i > self.split_layer:
+                break
+                
+            # Track spatial dimensions before flattening
+            if hasattr(x, 'dim') and x.dim() == 4:  # NCHW format
+                last_spatial_shape = (x.size(2), x.size(3))
+                
+            x = layer(x)
+            
+            # Handle flattening
+            if isinstance(layer, nn.Flatten) or (hasattr(x, 'dim') and x.dim() == 2 and i > 0):
+                if last_spatial_shape is not None:
+                    final_spatial_size = last_spatial_shape
+                    
+            if i == self.split_layer:
+                if x.dim() == 2:  # Linear output
+                    shapes["split"] = x.size(1)
+                else:  # Still spatial
+                    shapes["split"] = x.numel() // x.size(0)  # Flatten
+                    
+            if i in self.distillation_points:
+                if x.dim() == 2:  # Linear output
+                    shapes[f"tap_{i}"] = x.size(1)
+                else:  # Still spatial
+                    shapes[f"tap_{i}"] = x.numel() // x.size(0)  # Flatten
+
+        # Build feature path: [split] + [tap_near, ..., tap_far]
+        feature_path = [shapes["split"]]
+        for i in self.distillation_points:  # already near→far
+            feature_path.append(shapes[f"tap_{i}"])
+
+        return feature_path, final_spatial_size
+
     def _flatten_model_layers(self, model: nn.Module) -> List[nn.Module]:
         """
         Flatten a model into a sequential list of layers.
         Supports both .features attribute and general models via .children().
         """
-        if hasattr(model, 'features') and isinstance(model.features, nn.Sequential):
-            # VGG-style models with .features
-            return list(model.features)
+        if isinstance(model, nn.Sequential):
+            return list(model.children())
         else:
-            # General models - flatten recursively
+            # For non-Sequential models, collect all child models
             layers = []
-            
-            def _collect_layers(module: nn.Module):
-                # Get immediate children
-                children = list(module.children())
+            def collect_layers(m):
+                children = list(m.children())
                 if not children:
-                    # Leaf module - add it directly
-                    layers.append(module)
+                    # Leaf model
+                    layers.append(m)
                 else:
                     # Has children - recurse
                     for child in children:
-                        _collect_layers(child)
-            
-            _collect_layers(model)
+                        if isinstance(child, nn.Sequential):
+                            # Flatten Sequential containers
+                            layers.extend(child.children())
+                        else:
+                            collect_layers(child)
+            collect_layers(model)
             return layers
 
     def _get_subblocks_and_taps(self) -> Tuple[List[List[int]], List[int]]:
         """
         Partition layers [0..split_layer] into sub-blocks ending with ReLU.
-        Distillation tap for each sub-block is set to the *pre-ReLU conv* (middle point).
+        Distillation tap for each sub-block is set to the *pre-ReLU conv/linear* (middle point).
         
-        If no explicit ReLU layers are found in the model, assumes every Conv2d
+        If no explicit ReLU layers are found in the model, assumes every Conv2d/Linear
         has an implicit ReLU activation and creates blocks accordingly.
         """
         # Get flattened layer list
@@ -254,10 +454,11 @@ class DINAAttack:
         current_block: List[int] = []
         taps: List[int] = []
 
-        def find_prev_conv(idx: int) -> Optional[int]:
+        def find_prev_weighted_layer(idx: int) -> Optional[int]:
+            """Find previous Conv2d or Linear layer."""
             j = idx - 1
             while j >= 0:
-                if isinstance(self._model_layers[j], nn.Conv2d):
+                if isinstance(self._model_layers[j], (nn.Conv2d, nn.Linear)):
                     return j
                 j -= 1
             return None
@@ -268,8 +469,8 @@ class DINAAttack:
                 current_block.append(i)
                 if isinstance(self._model_layers[i], nn.ReLU):
                     subblocks.append(current_block)
-                    # tap = conv immediately before this ReLU (middle point)
-                    t = find_prev_conv(i)
+                    # tap = conv/linear immediately before this ReLU (middle point)
+                    t = find_prev_weighted_layer(i)
                     if t is not None:
                         taps.append(t)
                     current_block = []
@@ -278,24 +479,24 @@ class DINAAttack:
             if current_block:
                 subblocks.append(current_block)
         else:
-            # Fallback: assume every Conv2d has an implicit ReLU after it
-            conv_indices = [i for i in range(self.split_layer + 1) 
-                           if isinstance(self._model_layers[i], nn.Conv2d)]
+            # Fallback: assume every Conv2d/Linear has an implicit ReLU after it
+            weighted_indices = [i for i in range(self.split_layer + 1) 
+                               if isinstance(self._model_layers[i], (nn.Conv2d, nn.Linear))]
             
-            if not conv_indices:
-                # No Conv2d layers found - create one block with all layers
+            if not weighted_indices:
+                # No weighted layers found - create one block with all layers
                 subblocks.append(list(range(self.split_layer + 1)))
             else:
-                # Create blocks based on Conv2d positions
+                # Create blocks based on weighted layer positions
                 start_idx = 0
-                for conv_idx in conv_indices:
-                    # Block goes from start_idx to conv_idx (inclusive)
-                    block = list(range(start_idx, conv_idx + 1))
+                for weighted_idx in weighted_indices:
+                    # Block goes from start_idx to weighted_idx (inclusive)
+                    block = list(range(start_idx, weighted_idx + 1))
                     subblocks.append(block)
-                    taps.append(conv_idx)  # The Conv2d itself is the tap point
-                    start_idx = conv_idx + 1
+                    taps.append(weighted_idx)  # The weighted layer itself is the tap point
+                    start_idx = weighted_idx + 1
                 
-                # Add remaining layers after the last Conv2d (if any)
+                # Add remaining layers after the last weighted layer (if any)
                 if start_idx <= self.split_layer:
                     remaining_block = list(range(start_idx, self.split_layer + 1))
                     subblocks.append(remaining_block)

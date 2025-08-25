@@ -133,33 +133,63 @@ def get_candidate_layers(model: nn.Module, only_conv_relu=True) -> List[int]:
     """
     Get candidate layer indices for boundary search.
     
+    When only_conv_relu=True, selects layers that are Conv2d, ReLU, or AvgPool2d.
+    
     Args:
         model: Neural network model
+        only_conv_relu: If True, use the simplified Conv2d/ReLU/AvgPool2d logic
     
     Returns:
         List of layer indices in reverse order (tail to head)
     """
-    if (not hasattr(model, 'features')) and (not hasattr(model, 'children')) :
-        raise NotImplementedError("Currently only supports models with .features attribute")
+    # Flatten the model into a list of layers
+    def flatten_model(module):
+        """Flatten a model into a sequential list of layers."""
+        if isinstance(module, nn.Sequential):
+            return list(module.children())
+        else:
+            # For non-Sequential models, collect all child modules
+            layers = []
+            def collect_layers(m):
+                children = list(m.children())
+                if not children:
+                    # Leaf module
+                    layers.append(m)
+                else:
+                    # Has children - recurse
+                    for child in children:
+                        if isinstance(child, nn.Sequential):
+                            # Flatten Sequential containers
+                            layers.extend(child.children())
+                        else:
+                            collect_layers(child)
+            collect_layers(module)
+            return layers
     
+    layers = flatten_model(model)
     candidates = []
     
-    if hasattr(model, 'features'):
-        for i, layer in enumerate(model.features):
-            if i == 0 or i == len(model.features) - 1:
+    if not only_conv_relu:
+        # Original logic: avoid first, last, and pooling layers
+        for i, layer in enumerate(layers):
+            if i == 0 or i == len(layers) - 1:
                 continue
             if not isinstance(layer, (nn.MaxPool2d, nn.AdaptiveAvgPool2d, nn.AvgPool2d)):
-                if (not only_conv_relu) or isinstance(layer, (nn.Conv2d, nn.ReLU)):
-                    candidates.append(i)
+                candidates.append(i)
     else:
-        children_list = list(model.children())
-        for i, layer in enumerate(children_list):
-            if i == 0 or i == len(children_list) - 1:
-                continue
-            if not isinstance(layer, (nn.MaxPool2d, nn.AdaptiveAvgPool2d, nn.AvgPool2d)):
-                if (not only_conv_relu) or isinstance(layer, (nn.Conv2d, nn.ReLU)):
-                    candidates.append(i)
-
+        # Simplified logic: just take Conv2d, ReLU, or AvgPool2d layers
+        target_layer_types = (nn.Conv2d, nn.ReLU, nn.AvgPool2d, nn.MaxPool2d)
+        
+        for i, layer in enumerate(layers):
+            if isinstance(layer, target_layer_types):
+                candidates.append(i)
+                
+    #Remove final layer
+    candidates = candidates[:-1]
+    
+    # Remove duplicates and sort
+    candidates = sorted(list(set(candidates)))
+    
     # Return in reverse order for Algorithm 1 (scan tail to head)
     return list(reversed(candidates))
 

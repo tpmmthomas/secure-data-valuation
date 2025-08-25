@@ -25,11 +25,14 @@ class C2PIConfig:
     device: Union[str, torch.device] = 'auto'  # 'auto', 'cpu', 'cuda', or torch.device
     
     # Attack configuration
-    attack_epochs: int = 50
+    attack_epochs: int = 20
     attack_patience: int = 10  # Early stopping patience
     
     # Evaluation parameters
     max_samples: Optional[int] = None  # Limit dataset size for faster evaluation
+    verbose: bool = True
+    img_size: int = 28
+    
     
     def __post_init__(self):
         """Post-initialization processing."""

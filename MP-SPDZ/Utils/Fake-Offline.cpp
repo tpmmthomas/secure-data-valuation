@@ -727,7 +727,7 @@ int main(int argc, const char** argv)
 #ifdef RING_SIZE
       X(RING_SIZE, SPDZ2K_DEFAULT_SECURITY)
 #endif
-      X(32, 32) X(64, 64) X(64, 48)
+      X(32, 32) X(64, 64) X(64, 48) X(128,48)
 #undef X
 
       cerr << "Not compiled for " << k << "-bit rings with " << s

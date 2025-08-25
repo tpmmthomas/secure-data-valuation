@@ -2,6 +2,7 @@
 Model definitions and loading utilities for PrivaDE experiments.
 
 Supports LeNet-5, ResNet-20, VGG-8, and ResNet-50 with dataset-specific configurations.
+All models use nn.Sequential where possible for better compatibility.
 """
 
 import torch
@@ -15,6 +16,7 @@ class LeNet5(nn.Module):
     """
     LeNet-5 architecture for MNIST and CIFAR datasets.
     Modified to handle different input sizes and channel numbers.
+    Uses nn.Sequential for all layers.
     """
     
     def __init__(self, num_classes: int = 10, input_channels: int = 1, input_size: int = 32):
@@ -23,32 +25,36 @@ class LeNet5(nn.Module):
         self.input_channels = input_channels
         self.input_size = input_size
         
-        # Feature extraction
-        self.conv1 = nn.Conv2d(input_channels, 6, kernel_size=5, padding=2)
-        self.conv2 = nn.Conv2d(6, 16, kernel_size=5)
-        
         # Calculate the size after convolutions and pooling
         # After conv1 + pool1: size -> size/2
         # After conv2 + pool2: (size/2 - 4)/2
         conv_output_size = ((input_size // 2 - 4) // 2)
-        self.fc_input_size = 16 * conv_output_size * conv_output_size
+        fc_input_size = 16 * conv_output_size * conv_output_size
         
-        # Classifier
-        self.fc1 = nn.Linear(self.fc_input_size, 120)
-        self.fc2 = nn.Linear(120, 84)
-        self.fc3 = nn.Linear(84, num_classes)
+        # Define all layers using nn.Sequential
+        self.features = nn.Sequential(
+            nn.Conv2d(input_channels, 6, kernel_size=5, padding=2),
+            nn.ReLU(),
+            nn.AvgPool2d(2),
+            nn.Conv2d(6, 16, kernel_size=5),
+            nn.ReLU(),
+            nn.AvgPool2d(2),
+            nn.Flatten()
+        )
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(fc_input_size, 120),
+            nn.ReLU(),
+            nn.Linear(120, 84),
+            nn.ReLU(),
+            nn.Linear(84, num_classes)
+        )
         
         self._initialize_weights()
     
     def forward(self, x):
-        x = F.relu(self.conv1(x))
-        x = F.avg_pool2d(x, 2)
-        x = F.relu(self.conv2(x))
-        x = F.avg_pool2d(x, 2)
-        x = x.view(x.size(0), -1)
-        x = F.relu(self.fc1(x))
-        x = F.relu(self.fc2(x))
-        x = self.fc3(x)
+        x = self.features(x)
+        x = self.classifier(x)
         return x
     
     def _initialize_weights(self):
@@ -62,34 +68,83 @@ class LeNet5(nn.Module):
                 nn.init.constant_(m.bias, 0)
 
 
+class Square(nn.Module):
+    """Elementwise square activation: f(x) = x^2"""
+    def __init__(self, inplace: bool = False):
+        super().__init__()
+        self.inplace = inplace
+
+    def forward(self, x):
+        return x.mul_(x) if self.inplace else x * x
+
 class LeNetXS(nn.Module):
     """
     LeNet Extra Small (LeNetXS) - A minimal CNN for MNIST.
     Architecture: 28x28 → (5x5 conv) → 24x24 → 2x2 pool → 12x12
                   → (5x5 conv) → 8x8 → 2x2 pool → 4x4 → FC(32) → 10
     Total parameters: ~4,000 (much smaller than LeNet-5)
+    Uses nn.Sequential for all layers.
     """
     
     def __init__(self, num_classes: int = 10):
         super(LeNetXS, self).__init__()
-        # Conv layers
-        self.c1 = nn.Conv2d(1, 3, 5)   # 3*(1*5*5+1) = 78 parameters
-        self.c2 = nn.Conv2d(3, 6, 5)   # 6*(3*5*5+1) = 456 parameters
         
-        # Fully connected layers
-        self.fc1 = nn.Linear(4*4*6, 32)  # 96*32+32 = 3,104 parameters
-        self.fc2 = nn.Linear(32, num_classes)  # 32*10+10 = 330 parameters (for 10 classes)
+        # Define all layers using nn.Sequential
+        self.features = nn.Sequential(
+            nn.Conv2d(1, 3, 5),     # 3*(1*5*5+1) = 78 parameters
+            Square(),
+            nn.Flatten()
+        )
+        
+        self.classifier = nn.Sequential(
+            nn.Linear(3*24*24,900),
+            nn.ReLU(),
+            nn.Linear(900, 32),   # 96*32+32 = 3,104 parameters
+            nn.ReLU(),
+            nn.Linear(32, num_classes)  # 32*10+10 = 330 parameters (for 10 classes)
+        )
         
     def forward(self, x):
-        # First conv + pool
-        x = F.avg_pool2d(F.relu(self.c1(x)), 2)  # 28x28 → 24x24 → 12x12
-        # Second conv + pool
-        x = F.avg_pool2d(F.relu(self.c2(x)), 2)  # 12x12 → 8x8 → 4x4
-        # Flatten
-        x = x.view(x.size(0), -1)
-        # Fully connected layers
-        x = F.relu(self.fc1(x))
-        return self.fc2(x)
+        x = self.features(x)
+        x = self.classifier(x)
+        return x
+
+
+class SimpleCNN(nn.Module):
+    """
+    Simple CNN using only nn.Sequential layers.
+    Ideal for testing and compatibility with inference frameworks.
+    """
+    
+    def __init__(self, num_classes: int = 10, input_channels: int = 1, input_size: int = 28):
+        super(SimpleCNN, self).__init__()
+        
+        # Calculate dimensions through the network
+        # Conv1: 28x28 -> 24x24 (5x5 conv, no padding)
+        # Pool1: 24x24 -> 12x12 (2x2 pool)
+        # Conv2: 12x12 -> 8x8 (5x5 conv, no padding)  
+        # Pool2: 8x8 -> 4x4 (2x2 pool)
+        
+        self.model = nn.Sequential(
+            # First convolutional block
+            nn.Conv2d(input_channels, 6, kernel_size=5),  # 28->24 for MNIST
+            nn.ReLU(),
+            nn.MaxPool2d(2),                              # 24->12
+            
+            # Second convolutional block  
+            nn.Conv2d(6, 16, kernel_size=5),              # 12->8
+            nn.ReLU(), 
+            nn.MaxPool2d(2),                              # 8->4
+            
+            # Flatten and classify
+            nn.Flatten(),
+            nn.Linear(16 * 4 * 4, 84),                    # 4x4 feature maps
+            nn.ReLU(),
+            nn.Linear(84, num_classes)
+        )
+        
+    def forward(self, x):
+        return self.model(x)
 
 
 class BasicBlock(nn.Module):
@@ -568,7 +623,7 @@ def get_model(model_name: str, dataset: str, pretrained: bool = False,
     Get a model configured for the specified dataset.
     
     Args:
-        model_name: Name of the model ('lenet5', 'lenetxs', 'resnet20', 'vgg8', 'vgg16', 'resnet50', 'mobilenetv2')
+        model_name: Name of the model ('lenet5', 'lenetxs', 'simplecnn', 'resnet20', 'vgg8', 'vgg16', 'resnet50', 'mobilenetv2')
         dataset: Target dataset ('mnist', 'cifar10', 'cifar100', 'imagenet')
         pretrained: Whether to load pretrained weights (if available)
         pretrained_path: Path to custom pretrained weights
@@ -602,6 +657,12 @@ def get_model(model_name: str, dataset: str, pretrained: bool = False,
             raise ValueError("LeNetXS is designed specifically for MNIST (28x28 input). "
                            f"For {dataset}, use LeNet5 or another model.")
         model = LeNetXS(num_classes=config['num_classes'])
+    elif model_name == 'simplecnn':
+        model = SimpleCNN(
+            num_classes=config['num_classes'],
+            input_channels=config['input_channels'],
+            input_size=config['input_size']
+        )
     elif model_name == 'resnet20':
         if dataset == 'imagenet':
             raise ValueError("ResNet-20 is not suitable for ImageNet. Use ResNet-50 instead.")

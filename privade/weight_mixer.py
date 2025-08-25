@@ -9,26 +9,26 @@ class InvertibleLinear(nn.Module):
     Invertible linear layer using orthogonal matrices.
     For use in linear layer mixing where we need exact invertibility.
     """
-    def __init__(self, features: int, bias: bool = False):
+    def __init__(self, features: int, bias: bool = True):
         super().__init__()
         self.features = features
         
-        # Initialize as orthogonal matrix (invertible)
+        # Create a standard linear layer
+        self.linear = nn.Linear(features, features, bias=bias)
+        
+        # Initialize weights as orthogonal matrix (invertible)
         with torch.no_grad():
             Q, _ = torch.linalg.qr(torch.randn(features, features))
-        
-        self.weight = nn.Parameter(Q)
-        self.bias = nn.Parameter(torch.zeros(features)) if bias else None
+            self.linear.weight.copy_(Q)
+            if bias:
+                self.linear.bias.zero_()
         
     def forward(self, x):
-        out = x @ self.weight.T
-        if self.bias is not None:
-            out = out + self.bias
-        return out
+        return self.linear(x)
     
     def get_inverse_weight(self):
         """Get the inverse transformation matrix."""
-        return self.weight.T  # For orthogonal matrices, inverse = transpose
+        return self.linear.weight.T  # For orthogonal matrices, inverse = transpose
 
 
 def _get_last_layer(model: nn.Module) -> Tuple[str, nn.Module]:
@@ -114,8 +114,8 @@ def weight_mixer(model_A: nn.Module, model_B: nn.Module) -> Tuple[nn.Module, nn.
         raise ValueError("model_B has no Conv2d or Linear layers")
     
     # Check compatibility
-    is_conv_case = isinstance(last_layer_A, nn.Conv2d) and isinstance(first_layer_B, nn.Conv2d)
-    is_linear_case = isinstance(last_layer_A, nn.Linear) and isinstance(first_layer_B, nn.Linear)
+    is_conv_case =  isinstance(first_layer_B, nn.Conv2d)
+    is_linear_case = isinstance(first_layer_B, nn.Linear)
     
     if not (is_conv_case or is_linear_case):
         raise ValueError(
@@ -130,7 +130,7 @@ def weight_mixer(model_A: nn.Module, model_B: nn.Module) -> Tuple[nn.Module, nn.
     
     if is_conv_case:
         # Conv2d case: use 1x1 convolution as mixer
-        out_channels = last_layer_A.out_channels
+        out_channels = first_layer_B.in_channels
         in_channels = first_layer_B.in_channels
         
         if out_channels != in_channels:
@@ -162,7 +162,7 @@ def weight_mixer(model_A: nn.Module, model_B: nn.Module) -> Tuple[nn.Module, nn.
     
     else:
         # Linear case: use invertible linear layer as mixer
-        out_features = last_layer_A.out_features
+        out_features = first_layer_B.in_features
         in_features = first_layer_B.in_features
         
         if out_features != in_features:
@@ -172,11 +172,11 @@ def weight_mixer(model_A: nn.Module, model_B: nn.Module) -> Tuple[nn.Module, nn.
             )
         
         # Create invertible linear mixer
-        mixer = InvertibleLinear(out_features, bias=False)
+        mixer = InvertibleLinear(out_features)
         
         # Add mixer to model_A
-        model_A_copy = nn.Sequential(model_A_copy, mixer)
-        
+        model_A_copy = nn.Sequential(model_A_copy, nn.Flatten(), mixer)
+
         # Fold inverse into model_B's first linear layer
         first_layer_B_copy = None
         for name, module in model_B_copy.named_modules():
