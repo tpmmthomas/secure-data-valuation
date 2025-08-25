@@ -1,6 +1,0 @@
-timestamp,component,time_seconds,dataset_size,success,error,total_benchmark_time,config_dataset,config_model_name,config_student_model,config_dataset_size,config_batch_size,config_learning_rate,config_training_epochs,config_distillation_epochs,config_target_dimension,config_rep_set_size,config_challenge_number
-2025-08-26T03:39:51.379712,data_preparation,0.24408864974975586,1000,True,,1.7214093208312988,mnist,lenet5,lenetxs,1000,32,0.001,5,10,50,20,20
-2025-08-26T03:39:51.379712,model_training,0.09763813018798828,,False,Input type (torch.cuda.FloatTensor) and weight type (torch.FloatTensor) should be the same,1.7214093208312988,mnist,lenet5,lenetxs,1000,32,0.001,5,10,50,20,20
-2025-08-26T03:39:51.379712,model_distillation,0.00031495094299316406,,False,'PrivadeBenchmark' object has no attribute 'full_model',1.7214093208312988,mnist,lenet5,lenetxs,1000,32,0.001,5,10,50,20,20
-2025-08-26T03:39:51.379712,model_splitting,1.1920928955078125e-06,,False,'PrivadeBenchmark' object has no attribute 'trained_student_model',1.7214093208312988,mnist,lenet5,lenetxs,1000,32,0.001,5,10,50,20,20
-2025-08-26T03:39:51.379712,weight_mixing,7.152557373046875e-07,,False,'PrivadeBenchmark' object has no attribute 'model_A',1.7214093208312988,mnist,lenet5,lenetxs,1000,32,0.001,5,10,50,20,20
