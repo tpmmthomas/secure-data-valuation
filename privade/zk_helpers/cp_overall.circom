@@ -156,4 +156,4 @@ template DistanceProof(n, dim, bitlen) {
 }
 
 // --- instantiate for your N points (replace 4 with your actual N) ---
-component main {public [points,d, commitX, commitY]} = DistanceProof(20, 50, 32);
+component main {public [points,d, commitX, commitY]} = DistanceProof(50, 50, 32);

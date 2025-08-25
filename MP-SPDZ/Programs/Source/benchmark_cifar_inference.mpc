@@ -50,7 +50,10 @@ start_time = time.time()
 
 # Define a smaller model to reduce triple usage
 net = nn.Sequential(
-    nn.Linear(3*32*32, 10)  # Reduced from 1000 to 64 outputs
+    nn.Conv2d(3,32, kernel_size=3,padding=1) ,
+    nn.ReLU(),
+    nn.Flatten(),
+    nn.Linear(32*32*32,1)
 )
 
 # Initialize with random weights for this benchmark

@@ -104,6 +104,7 @@ async def setup_zkp(model, test_data, layer, mode="pw"):
                     'output' : {0 : 'batch_size'}})
 
     py_run_args = ezkl.PyRunArgs()
+    py_run_args.logrows=21
     if mode == 'pw':
         py_run_args.input_visibility = "private" 
         py_run_args.output_visibility = "public"

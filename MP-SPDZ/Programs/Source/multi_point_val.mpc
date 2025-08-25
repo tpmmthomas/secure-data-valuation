@@ -13,7 +13,8 @@ alpha_3 = sfix(0.4)
 # Parameters
 n  = 20 # Number of data points
 m = 50 # Number of features per data point.
-cls = 10 # Number of classes
+cls = 100 # Number of classes
+import time
 
 
 # Define the test function to reveal and print values
@@ -23,6 +24,7 @@ def test(actual, description=""):
         print_ln('%s: %s', description, actual_revealed)
     else:
         print_ln('Value: %s', actual_revealed)
+
 
 #Load Bob's data points and labels
 data = Matrix(n, m, sfix)
@@ -103,4 +105,5 @@ test(loss_score, "Loss score")
 total_score = alpha_1 * diversity_score + alpha_2 * uncertainty_score + alpha_3 * loss_score
     
 test(total_score, "Final Valuation")
+
     

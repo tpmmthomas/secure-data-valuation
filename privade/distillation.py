@@ -63,9 +63,9 @@ def train_distilled_model(
     train_loader: DataLoader,
     test_loader: Optional[DataLoader] = None,
     epochs: int = 50,
-    learning_rate: float = 0.01,
+    learning_rate: float = 0.001,
     alpha: float = 0.7,
-    temperature: float = 4.0,
+    temperature: float = 5.0,
     device: Optional[torch.device] = None,
     print_freq: int = 10,
     evaluate_freq: int = 10
