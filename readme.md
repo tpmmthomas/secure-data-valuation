@@ -68,3 +68,6 @@ To run the experiment, set the parameters at the top of the file and run:
 ```bash
 python experiment_AL.py
 ```
+
+### Model Definitions
+For model definitions used in our paper, see [here](model_def.md)
